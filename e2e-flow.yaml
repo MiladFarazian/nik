@@ -1,0 +1,51 @@
+appId: com.miladfarazian.nik
+---
+- launchApp:
+    clearState: true
+    permissions:
+      photos: allow
+- extendedWaitUntil:
+    visible: "Hook & Punch"
+    timeout: 10000
+- tapOn: "Hook & Punch"
+- extendedWaitUntil:
+    visible: "Use template"
+    timeout: 5000
+- tapOn: "Use template"
+- extendedWaitUntil:
+    visible: "Videos"
+    timeout: 10000
+# Grant photos if a system dialog appears anyway
+- runFlow:
+    when:
+      visible: "Allow Access to All Photos"
+    commands:
+      - tapOn: "Allow Access to All Photos"
+# Tap the first library cell 4 times — each tap fills the next slot
+- repeat:
+    times: 4
+    commands:
+      - tapOn:
+          point: 12%,28%
+      - waitForAnimationToEnd:
+          timeout: 800
+- extendedWaitUntil:
+    visible: "Preview"
+    timeout: 5000
+- tapOn: "Preview"
+# Editor: wait for media copy + composition build
+- extendedWaitUntil:
+    visible: "Export"
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: /private/tmp/claude-501/-Users-miladfarazian-Documents-Projects-nik/42f15f10-9d78-4aea-af03-bf48651f58b3/scratchpad/e2e-editor
+- tapOn: "Export"
+- extendedWaitUntil:
+    visible: "Export video"
+    timeout: 10000
+- tapOn: "Export video"
+- extendedWaitUntil:
+    visible: "Share"
+    timeout: 120000
+- takeScreenshot: /private/tmp/claude-501/-Users-miladfarazian-Documents-Projects-nik/42f15f10-9d78-4aea-af03-bf48651f58b3/scratchpad/e2e-export-done
