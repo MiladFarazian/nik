@@ -5,6 +5,10 @@ import CoreGraphics
 /// The single source of truth for turning (template + fills) into AVFoundation
 /// objects. The same builder output drives preview (AVPlayer) and export
 /// (AVAssetExportSession) — preview at reduced renderSize, export at full.
+///
+/// v2: renders through the custom `NikCompositor` (Core Image) using an A/B-roll
+/// composition (two alternating video tracks). Transitions, filters and overlays
+/// are expressed as immutable `NikInstruction` snapshots.
 struct BuiltComposition {
     let composition: AVComposition
     let videoComposition: AVMutableVideoComposition
@@ -13,77 +17,156 @@ struct BuiltComposition {
 }
 
 enum CompositionBuilder {
+    /// Debug breadcrumb: last step attempted inside build(), surfaced in error banners.
+    nonisolated(unsafe) static var lastStep = ""
     static let timescale: CMTimeScale = 600
-    static let dipFadeDuration = 0.22
+    static let dipFadeDuration = 0.22       // dip-to-black fallback when a crossfade can't overlap
+    static let crossfadeOverlap = 0.35      // A/B-roll overlap when the outgoing clip has spare media
+
+    /// Per-slot facts gathered in the first pass (before any insertion).
+    private struct SlotInfo {
+        let slot: TemplateSlot
+        let media: MediaResolver.ResolvedSlot
+        let fill: SlotFill?
+        /// Strong reference to the source asset. AVAssetTrack only weakly references
+        /// its parent asset — without this, the asset deallocates between the gather
+        /// pass and the insertion pass and insertTimeRange fails with -11800/-12780.
+        let asset: AVURLAsset
+        let sourceTrack: AVAssetTrack
+        let audioTrack: AVAssetTrack?
+        let naturalSize: CGSize
+        let assetDuration: CMTime
+        let baseTransform: CGAffineTransform
+        var startSource: CMTime          // where in the source the slot window begins
+        var baseSourceDuration: CMTime   // min(wantedSource, available) — the slot window's source
+        var available: CMTime            // source remaining from startSource to end
+        var slotDuration: CMTime
+        var speed: Double
+        var outputStart: CMTime          // start of this slot on the output timeline
+    }
 
     static func build(
         project: EditProject,
         template: Template,
         resolved: [Int: MediaResolver.ResolvedSlot],
-        renderSize: CGSize
+        renderSize: CGSize,
+        burnOverlays: Bool = false
     ) async throws -> BuiltComposition {
         let composition = AVMutableComposition()
         guard
-            let videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+            let trackA = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+            let trackB = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
             let audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
         else { throw MediaError.exportFailed }
+        let videoTracks = [trackA, trackB]
 
-        var instructions: [AVMutableVideoCompositionInstruction] = []
+        // MARK: First pass — gather per-slot facts and the output timeline.
+        var infos: [SlotInfo] = []
         var cursor = CMTime.zero
-
-        struct SlotPlacement {
-            let slot: TemplateSlot
-            let range: CMTimeRange
-            let fillTransform: CGAffineTransform
-        }
-        var placements: [SlotPlacement] = []
-
         for slot in template.slots {
             guard let media = resolved[slot.id] else { throw MediaError.missingFill }
             let fill = project.fills.first(where: { $0.id == slot.id })
 
             let asset = AVURLAsset(url: media.url)
+            lastStep = "load-duration-\(slot.id)"
             let assetDuration = try await asset.load(.duration)
+            lastStep = "load-videotracks-\(slot.id)"
             guard let sourceTrack = try await asset.loadTracks(withMediaType: .video).first else {
                 throw MediaError.assetUnavailable
             }
+            lastStep = "load-props-\(slot.id)"
             let naturalSize = try await sourceTrack.load(.naturalSize)
             let preferredTransform = try await sourceTrack.load(.preferredTransform)
+            lastStep = "load-audiotracks-\(slot.id)"
+            let audioTrackSource = try await asset.loadTracks(withMediaType: .audio).first
+            lastStep = "gathered-\(slot.id)"
 
-            let slotDuration = CMTime(seconds: slot.duration, preferredTimescale: timescale)
-            // Source seconds consumed = slot duration × speed (2x speed eats 2s of source per output second).
-            let wantedSource = CMTime(seconds: slot.duration * slot.speed, preferredTimescale: timescale)
-            let trimStart = CMTime(seconds: fill?.trimStart ?? 0, preferredTimescale: timescale)
-            let start = CMTimeMinimum(trimStart, CMTimeMaximum(.zero, assetDuration - wantedSource))
-            let available = assetDuration - start
-            let sourceRange = CMTimeRange(start: start, duration: CMTimeMinimum(wantedSource, available))
-
-            try videoTrack.insertTimeRange(sourceRange, of: sourceTrack, at: cursor)
-            // Stretch/compress whatever we got to exactly the slot duration.
-            videoTrack.scaleTimeRange(CMTimeRange(start: cursor, duration: sourceRange.duration), toDuration: slotDuration)
-
-            if let audioSource = try await asset.loadTracks(withMediaType: .audio).first,
-               fill?.muted != true, !media.isFromPhoto {
-                try? audioTrack.insertTimeRange(sourceRange, of: audioSource, at: cursor)
-                audioTrack.scaleTimeRange(CMTimeRange(start: cursor, duration: sourceRange.duration), toDuration: slotDuration)
-            } else {
-                audioTrack.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: slotDuration))
-            }
+            let slotDuration = t(slot.duration)
+            let wantedSource = t(slot.duration * slot.speed)
+            let trimStart = t(fill?.trimStart ?? 0)
+            let startSource = CMTimeMinimum(trimStart, CMTimeMaximum(.zero, assetDuration - wantedSource))
+            let available = assetDuration - startSource
+            let baseSourceDuration = CMTimeMinimum(wantedSource, available)
 
             let transform = aspectFillTransform(
-                naturalSize: naturalSize,
-                preferredTransform: preferredTransform,
-                renderSize: renderSize
+                naturalSize: naturalSize, preferredTransform: preferredTransform, renderSize: renderSize
             )
-            placements.append(SlotPlacement(
-                slot: slot,
-                range: CMTimeRange(start: cursor, duration: slotDuration),
-                fillTransform: transform
+
+            infos.append(SlotInfo(
+                slot: slot, media: media, fill: fill,
+                asset: asset,
+                sourceTrack: sourceTrack, audioTrack: audioTrackSource,
+                naturalSize: naturalSize, assetDuration: assetDuration,
+                baseTransform: transform,
+                startSource: startSource, baseSourceDuration: baseSourceDuration,
+                available: available, slotDuration: slotDuration, speed: slot.speed,
+                outputStart: cursor
             ))
             cursor = cursor + slotDuration
         }
+        let totalDuration = cursor
 
-        // Optional music bed from a user-picked asset (its audio track).
+        // MARK: Transition decisions per boundary.
+        // A crossfade "into" slot i overlaps the outgoing slot i-1 by `overlap` when i-1
+        // has enough spare source media beyond its window; otherwise it dips through black.
+        let n = infos.count
+        var overlapInto = [CMTime](repeating: .zero, count: n)   // overlap seconds for slot i's crossfade-in
+        var crossfadeFeasible = [Bool](repeating: false, count: n)
+        for i in stride(from: 1, to: n, by: 1) {
+            guard infos[i].slot.transition == .crossfade else { continue }
+            let ovSeconds = min(crossfadeOverlap,
+                                infos[i - 1].slotDuration.seconds,
+                                infos[i].slotDuration.seconds)
+            let neededSource = t(ovSeconds * infos[i - 1].speed)
+            let spare = infos[i - 1].available - infos[i - 1].baseSourceDuration
+            if ovSeconds > 0, CMTimeCompare(spare, neededSource) >= 0 {
+                crossfadeFeasible[i] = true
+                overlapInto[i] = t(ovSeconds)
+            }
+        }
+        // Does slot i extend past its window (because slot i+1 crossfades onto it)?
+        func extendsOut(_ i: Int) -> CMTime { (i + 1 < n && crossfadeFeasible[i + 1]) ? overlapInto[i + 1] : .zero }
+        // Does slot i dip to black on the way in / out?
+        func dipsIn(_ i: Int) -> Bool { infos[i].slot.transition == .crossfade && !crossfadeFeasible[i] }
+        func dipsOut(_ i: Int) -> Bool { i + 1 < n && infos[i + 1].slot.transition == .crossfade && !crossfadeFeasible[i + 1] }
+
+        // MARK: Insertion pass.
+        for (i, info) in infos.enumerated() {
+            let videoTrack = videoTracks[i % 2]
+            // Pad the (alternating) track with an empty edit so this slot lands exactly
+            // at its output start rather than appended after the previous same-track slot.
+            let existing = videoTrack.timeRange
+            let currentEnd = (existing.start.isValid && existing.duration.isValid) ? existing.end : .zero
+            if CMTimeCompare(currentEnd, info.outputStart) < 0 {
+                videoTrack.insertEmptyTimeRange(
+                    CMTimeRange(start: currentEnd, duration: info.outputStart - currentEnd)
+                )
+            }
+            let overlap = extendsOut(i)
+            let extraSource = t(overlap.seconds * info.speed)
+            let insertSource = CMTimeRange(start: info.startSource, duration: info.baseSourceDuration + extraSource)
+            lastStep = "insert-video-\(i)"
+            try videoTrack.insertTimeRange(insertSource, of: info.sourceTrack, at: info.outputStart)
+            lastStep = "inserted-video-\(i)"
+            videoTrack.scaleTimeRange(
+                CMTimeRange(start: info.outputStart, duration: insertSource.duration),
+                toDuration: info.slotDuration + overlap
+            )
+
+            // Audio — unchanged behaviour: base window only, sequential, single track.
+            let audioSource = CMTimeRange(start: info.startSource, duration: info.baseSourceDuration)
+            if let audio = info.audioTrack, info.fill?.muted != true, !info.media.isFromPhoto {
+                try? audioTrack.insertTimeRange(audioSource, of: audio, at: info.outputStart)
+                audioTrack.scaleTimeRange(
+                    CMTimeRange(start: info.outputStart, duration: audioSource.duration),
+                    toDuration: info.slotDuration
+                )
+            } else {
+                audioTrack.insertEmptyTimeRange(CMTimeRange(start: info.outputStart, duration: info.slotDuration))
+            }
+        }
+
+        // MARK: Optional music bed (unchanged).
         var musicParams: AVMutableAudioMixInputParameters?
         if let musicID = project.musicAssetIdentifier,
            let musicPHAsset = PhotoLibrary.asset(withIdentifier: musicID) {
@@ -93,7 +176,7 @@ enum CompositionBuilder {
                 if let musicSource = try await musicAsset.loadTracks(withMediaType: .audio).first,
                    let musicTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
                     let musicDuration = try await musicAsset.load(.duration)
-                    let range = CMTimeRange(start: .zero, duration: CMTimeMinimum(musicDuration, cursor))
+                    let range = CMTimeRange(start: .zero, duration: CMTimeMinimum(musicDuration, totalDuration))
                     try? musicTrack.insertTimeRange(range, of: musicSource, at: .zero)
                     let params = AVMutableAudioMixInputParameters(track: musicTrack)
                     params.setVolume(0.65, at: .zero)
@@ -102,36 +185,100 @@ enum CompositionBuilder {
             }
         }
 
-        // Build one instruction per slot with transform + transition ramps.
-        for (index, placement) in placements.enumerated() {
-            let instruction = AVMutableVideoCompositionInstruction()
-            instruction.timeRange = placement.range
-            instruction.backgroundColor = CGColor(red: 0, green: 0, blue: 0, alpha: 1)
-
-            let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
-            layer.setTransform(placement.fillTransform, at: placement.range.start)
-
-            applyTransition(
-                placement.slot.transition,
-                to: layer,
-                base: placement.fillTransform,
-                range: placement.range,
+        // MARK: Overlay snapshot (export only).
+        var overlaySpec: OverlaySpec?
+        if burnOverlays {
+            overlaySpec = await OverlayBuilder.make(
+                textLayers: project.textLayers,
+                captions: project.captions,
+                captionStyle: project.captionStyle,
+                watermark: project.exportSettings.watermark,
                 renderSize: renderSize
             )
+        }
 
-            // Dip-fade out at the end of this slot if the NEXT slot enters with a crossfade.
-            if index + 1 < placements.count, placements[index + 1].slot.transition == .crossfade {
-                let fade = CMTime(seconds: dipFadeDuration, preferredTimescale: timescale)
-                layer.setOpacityRamp(
-                    fromStartOpacity: 1, toEndOpacity: 0,
-                    timeRange: CMTimeRange(start: placement.range.end - fade, duration: fade)
-                )
+        // MARK: Instruction pass — tile [0, totalDuration] with NikInstructions.
+        var instructions: [AVVideoCompositionInstructionProtocol] = []
+        for (i, info) in infos.enumerated() {
+            let trackID = videoTracks[i % 2].trackID
+            let slotStart = info.outputStart
+            let slotEnd = info.outputStart + info.slotDuration
+            let filter = info.slot.filter ?? .none
+
+            // Foreground ramps / fades for this slot (absolute-timed).
+            var startTransform = info.baseTransform
+            var endTransform = info.baseTransform
+            var rampStart = slotStart
+            var rampDuration = CMTime.zero
+            var easing: Easing = .linear
+
+            switch info.slot.transition {
+            case .zoomIn:
+                startTransform = zoomed(info.baseTransform, by: 1.10, renderSize: renderSize)
+                endTransform = info.baseTransform
+                rampStart = slotStart
+                rampDuration = info.slotDuration
+                easing = .easeOut
+            case .punchIn:
+                startTransform = zoomed(info.baseTransform, by: 1.18, renderSize: renderSize)
+                endTransform = info.baseTransform
+                rampStart = slotStart
+                rampDuration = CMTimeMinimum(t(0.3), info.slotDuration)
+                easing = .easeOut
+            case .cut, .crossfade:
+                break
             }
-            instruction.layerInstructions = [layer]
-            instructions.append(instruction)
+
+            var fadeIn: CMTimeRange?
+            if crossfadeFeasible[i] {
+                fadeIn = CMTimeRange(start: slotStart, duration: overlapInto[i])   // dissolve up over the overlap
+            } else if dipsIn(i) {
+                fadeIn = CMTimeRange(start: slotStart, duration: CMTimeMinimum(t(dipFadeDuration), info.slotDuration))
+            }
+
+            var fadeOut: CMTimeRange?
+            if dipsOut(i) {
+                let d = CMTimeMinimum(t(dipFadeDuration), info.slotDuration)
+                fadeOut = CMTimeRange(start: slotEnd - d, duration: d)
+            }
+
+            let foreground = LayerSpec(
+                trackID: trackID, sourceHeight: info.naturalSize.height,
+                startTransform: startTransform, endTransform: endTransform,
+                rampStart: rampStart, rampDuration: rampDuration, easing: easing,
+                fadeIn: fadeIn, fadeOut: fadeOut, filter: filter
+            )
+
+            if crossfadeFeasible[i], i > 0 {
+                // Two segments: overlap head (outgoing = slot i-1 as background) + solo body.
+                let prev = infos[i - 1]
+                let background = LayerSpec.fixed(
+                    trackID: videoTracks[(i - 1) % 2].trackID,
+                    sourceHeight: prev.naturalSize.height,
+                    transform: prev.baseTransform,
+                    filter: prev.slot.filter ?? .none
+                )
+                let headEnd = slotStart + overlapInto[i]
+                instructions.append(NikInstruction(
+                    timeRange: CMTimeRange(start: slotStart, duration: overlapInto[i]),
+                    foreground: foreground, background: background, overlay: overlaySpec
+                ))
+                if CMTimeCompare(headEnd, slotEnd) < 0 {
+                    instructions.append(NikInstruction(
+                        timeRange: CMTimeRange(start: headEnd, duration: slotEnd - headEnd),
+                        foreground: foreground, background: nil, overlay: overlaySpec
+                    ))
+                }
+            } else {
+                instructions.append(NikInstruction(
+                    timeRange: CMTimeRange(start: slotStart, duration: info.slotDuration),
+                    foreground: foreground, background: nil, overlay: overlaySpec
+                ))
+            }
         }
 
         let videoComposition = AVMutableVideoComposition()
+        videoComposition.customVideoCompositorClass = NikCompositor.self
         videoComposition.instructions = instructions
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = CMTime(value: 1, timescale: 30)
@@ -147,20 +294,24 @@ enum CompositionBuilder {
             composition: composition.copy() as! AVComposition,
             videoComposition: videoComposition,
             audioMix: audioMix,
-            duration: cursor
+            duration: totalDuration
         )
     }
 
-    // MARK: - Transforms
+    // MARK: - Helpers
+
+    private static func t(_ seconds: Double) -> CMTime {
+        CMTime(seconds: seconds, preferredTimescale: timescale)
+    }
 
     /// Aspect-fill a source track (respecting its preferredTransform rotation)
-    /// into the render frame, centered.
+    /// into the render frame, centered. Result is in AVFoundation video space
+    /// (top-left origin); the compositor converts to Core Image space.
     static func aspectFillTransform(
         naturalSize: CGSize,
         preferredTransform: CGAffineTransform,
         renderSize: CGSize
     ) -> CGAffineTransform {
-        // Normalize the preferred transform so displayed content sits at origin.
         let displayedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
         let normalized = preferredTransform.concatenating(
             CGAffineTransform(translationX: -displayedRect.minX, y: -displayedRect.minY)
@@ -181,39 +332,5 @@ enum CompositionBuilder {
                                      y: renderSize.height * (1 - scale) / 2)
             .scaledBy(x: scale, y: scale)
         return base.concatenating(zoom)
-    }
-
-    private static func applyTransition(
-        _ transition: TransitionKind,
-        to layer: AVMutableVideoCompositionLayerInstruction,
-        base: CGAffineTransform,
-        range: CMTimeRange,
-        renderSize: CGSize
-    ) {
-        switch transition {
-        case .cut:
-            break
-        case .crossfade:
-            let fade = CMTime(seconds: dipFadeDuration, preferredTimescale: timescale)
-            layer.setOpacityRamp(
-                fromStartOpacity: 0, toEndOpacity: 1,
-                timeRange: CMTimeRange(start: range.start, duration: fade)
-            )
-        case .zoomIn:
-            // Slow settle from 1.10x to 1.0 across the whole slot.
-            layer.setTransformRamp(
-                fromStart: zoomed(base, by: 1.10, renderSize: renderSize),
-                toEnd: base,
-                timeRange: range
-            )
-        case .punchIn:
-            // Fast pop: 1.18x → 1.0 in the first 0.3s, then hold.
-            let pop = CMTime(seconds: min(0.3, range.duration.seconds), preferredTimescale: timescale)
-            layer.setTransformRamp(
-                fromStart: zoomed(base, by: 1.18, renderSize: renderSize),
-                toEnd: base,
-                timeRange: CMTimeRange(start: range.start, duration: pop)
-            )
-        }
     }
 }

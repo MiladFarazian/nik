@@ -1,5 +1,6 @@
 import SwiftUI
 import Photos
+import AVFoundation
 
 // MARK: - Text layer editing
 
@@ -93,6 +94,8 @@ struct SlotEditSheet: View {
     @State private var trimStart = 0.0
     @State private var maxTrim = 0.0
     @State private var isVideo = false
+    @State private var assetLocalIdentifier = ""
+    @State private var filmstripUnavailable = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -120,14 +123,26 @@ struct SlotEditSheet: View {
 
                 if maxTrim > 0.05 {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Start point — slide to choose which part of your clip fills this slot")
+                        Text("Start point — drag to choose which part of your clip fills this slot")
                             .font(.footnote)
                             .foregroundStyle(Theme.textSecondary)
-                        HStack {
-                            Slider(value: $trimStart, in: 0...maxTrim)
-                            Text(String(format: "%.1fs", trimStart))
-                                .font(.footnote.monospacedDigit())
-                                .foregroundStyle(Theme.textSecondary)
+
+                        if filmstripUnavailable {
+                            HStack {
+                                Slider(value: $trimStart, in: 0...maxTrim)
+                                Text(String(format: "%.1fs", trimStart))
+                                    .font(.footnote.monospacedDigit())
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+                        } else {
+                            FilmstripTrimmer(
+                                model: model,
+                                assetLocalIdentifier: assetLocalIdentifier,
+                                slotSourceDuration: slot.duration * slot.speed,
+                                maxTrim: maxTrim,
+                                trimStart: $trimStart,
+                                onUnavailable: { filmstripUnavailable = true }
+                            )
                         }
                     }
                     .padding(.horizontal)
@@ -162,6 +177,7 @@ struct SlotEditSheet: View {
         muted = fill.muted
         trimStart = fill.trimStart
         isVideo = fill.isVideo
+        assetLocalIdentifier = fill.assetLocalIdentifier
         if let asset = PhotoLibrary.asset(withIdentifier: fill.assetLocalIdentifier) {
             maxTrim = max(0, asset.duration - slot.duration * slot.speed)
         }
@@ -173,6 +189,186 @@ struct SlotEditSheet: View {
         fill.trimStart = trimStart
         Haptics.light()
         model.updateFill(fill)
+    }
+}
+
+// MARK: - CapCut-style filmstrip trimmer
+//
+// A fixed, centered selection window sits on top of a horizontally scrollable
+// filmstrip. Dragging slides the filmstrip content; the window never moves.
+// The window's width represents `slotSourceDuration` seconds of source, at
+// the same px/second scale as the filmstrip itself, so the region of the
+// strip under the window is always exactly the clip that will fill the slot.
+private struct FilmstripTrimmer: View {
+    let model: EditorModel
+    let assetLocalIdentifier: String
+    let slotSourceDuration: Double
+    let maxTrim: Double
+    @Binding var trimStart: Double
+    let onUnavailable: () -> Void
+
+    private enum LoadState { case loading, loaded, failed }
+
+    @State private var loadState: LoadState = .loading
+    @State private var thumbnails: [UIImage] = []
+    @State private var assetDuration: Double = 0
+    @State private var currentOffset: CGFloat = 0
+    @State private var dragBaseOffset: CGFloat = 0
+    @State private var wasClampedLow = false
+    @State private var wasClampedHigh = false
+
+    private let thumbWidth: CGFloat = 46
+    private let thumbHeight: CGFloat = 64
+    private let thumbnailCount = 10
+
+    /// Points per second of source, derived from how densely the generated
+    /// thumbnails tile across the strip. The selection window is sized in
+    /// this same scale so it always spans exactly `slotSourceDuration`
+    /// seconds of the underlying clip.
+    private var pxPerSecond: CGFloat {
+        guard assetDuration > 0, !thumbnails.isEmpty else { return 1 }
+        return (thumbWidth * CGFloat(thumbnails.count)) / CGFloat(assetDuration)
+    }
+
+    var body: some View {
+        Group {
+            switch loadState {
+            case .loading:
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: thumbHeight)
+                    .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 10))
+            case .failed:
+                EmptyView()
+            case .loaded:
+                VStack(alignment: .leading, spacing: 6) {
+                    GeometryReader { geo in
+                        let viewportWidth = geo.size.width
+                        let contentWidth = thumbWidth * CGFloat(thumbnails.count)
+                        let windowWidth = min(max(CGFloat(slotSourceDuration) * pxPerSecond, 28), viewportWidth)
+                        let windowInset = (viewportWidth - windowWidth) / 2
+                        let minOffset = -CGFloat(max(maxTrim, 0)) * pxPerSecond
+                        let maxOffset: CGFloat = 0
+
+                        ZStack(alignment: .leading) {
+                            HStack(spacing: 0) {
+                                ForEach(thumbnails.indices, id: \.self) { i in
+                                    Image(uiImage: thumbnails[i])
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: thumbWidth, height: thumbHeight)
+                                        .clipped()
+                                }
+                            }
+                            .frame(width: contentWidth, height: thumbHeight, alignment: .leading)
+                            .offset(x: windowInset + currentOffset)
+
+                            // Dim everything outside the fixed selection window.
+                            HStack(spacing: 0) {
+                                Color.black.opacity(0.55).frame(width: max(windowInset, 0))
+                                Color.clear.frame(width: windowWidth)
+                                Color.black.opacity(0.55)
+                            }
+                            .allowsHitTesting(false)
+
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(Theme.accent, lineWidth: 3)
+                                .frame(width: windowWidth, height: thumbHeight)
+                                .offset(x: windowInset)
+                                .allowsHitTesting(false)
+                        }
+                        .frame(width: viewportWidth, height: thumbHeight)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    var newOffset = dragBaseOffset + value.translation.width
+                                    let atMin = newOffset <= minOffset
+                                    let atMax = newOffset >= maxOffset
+                                    newOffset = min(max(newOffset, minOffset), maxOffset)
+
+                                    if atMin {
+                                        if !wasClampedLow { Haptics.selection() }
+                                        wasClampedLow = true
+                                    } else {
+                                        wasClampedLow = false
+                                    }
+                                    if atMax {
+                                        if !wasClampedHigh { Haptics.selection() }
+                                        wasClampedHigh = true
+                                    } else {
+                                        wasClampedHigh = false
+                                    }
+
+                                    currentOffset = newOffset
+                                    trimStart = pxPerSecond > 0 ? Double(-newOffset / pxPerSecond) : 0
+                                }
+                                .onEnded { _ in
+                                    dragBaseOffset = currentOffset
+                                }
+                        )
+                    }
+                    .frame(height: thumbHeight)
+
+                    Text(String(format: "%.1fs", trimStart))
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+        }
+        .task(id: assetLocalIdentifier) {
+            await loadFilmstrip()
+        }
+    }
+
+    private func loadFilmstrip() async {
+        loadState = .loading
+        do {
+            let url = try await MediaResolver.localVideoURL(
+                assetLocalIdentifier: assetLocalIdentifier,
+                projectID: model.project.id
+            )
+            if Task.isCancelled { return }
+
+            let asset = AVURLAsset(url: url)
+            let duration = try await asset.load(.duration).seconds
+            guard duration.isFinite, duration > 0 else {
+                loadState = .failed
+                onUnavailable()
+                return
+            }
+
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 800, height: 120)
+            generator.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
+
+            var images: [UIImage] = []
+            for i in 0..<thumbnailCount {
+                if Task.isCancelled { return }
+                let t = duration * (Double(i) + 0.5) / Double(thumbnailCount)
+                let time = CMTime(seconds: t, preferredTimescale: 600)
+                let result = try await generator.image(at: time)
+                images.append(UIImage(cgImage: result.image))
+            }
+            if Task.isCancelled { return }
+
+            assetDuration = duration
+            thumbnails = images
+
+            // Seed the strip's scroll offset from the fill's existing trimStart
+            // so re-opening the sheet shows the previously chosen window.
+            let scale = (thumbWidth * CGFloat(images.count)) / CGFloat(duration)
+            let clampedTrimStart = min(max(trimStart, 0), max(maxTrim, 0))
+            currentOffset = -CGFloat(clampedTrimStart) * scale
+            dragBaseOffset = currentOffset
+            loadState = .loaded
+        } catch {
+            if Task.isCancelled { return }
+            loadState = .failed
+            onUnavailable()
+        }
     }
 }
 

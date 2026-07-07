@@ -10,6 +10,14 @@ settings:
     TARGETED_DEVICE_FAMILY: "1"
     INFOPLIST_KEY_UILaunchScreen_Generation: YES
     CODE_SIGN_STYLE: Automatic
+schemes:
+  Nik:
+    build:
+      targets:
+        Nik: all
+    run:
+      config: Debug
+      storeKitConfiguration: Nik.storekit
 targets:
   Nik:
     type: application

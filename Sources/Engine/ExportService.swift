@@ -24,39 +24,37 @@ final class ExportService {
         UIApplication.shared.isIdleTimerDisabled = true
         defer { UIApplication.shared.isIdleTimerDisabled = false }
 
+        var stage = "resolve"
         do {
             let resolver = MediaResolver()
             let resolved = try await resolver.resolve(project: project, template: template)
             let renderSize = project.exportSettings.resolution.size
+            stage = "build"
 
+            // Overlays (text, captions, watermark) are burned in by the custom
+            // NikCompositor via Core Image — works identically on simulator and device.
             let built = try await CompositionBuilder.build(
                 project: project,
                 template: template,
                 resolved: resolved,
-                renderSize: renderSize
+                renderSize: renderSize,
+                burnOverlays: true
             )
 
-            // Burn text, captions and watermark via the Core Animation tool (export-only).
-            // The simulator's offline CA renderer (CA::OGL + IOSurface) crashes with an
-            // xpc misuse trap, so overlays burn in on device builds only.
-            #if !targetEnvironment(simulator)
-            let videoLayer = CALayer()
-            videoLayer.frame = CGRect(origin: .zero, size: renderSize)
-            let overlay = OverlayLayerFactory.makeOverlayLayer(
-                textLayers: project.textLayers,
-                captions: project.captions,
-                captionStyle: project.captionStyle,
-                watermark: project.exportSettings.watermark,
-                renderSize: renderSize
+            #if DEBUG
+            stage = "validate"
+            let validator = CompositionValidator()
+            let valid = try await built.videoComposition.isValid(
+                for: built.composition,
+                timeRange: CMTimeRange(start: .zero, duration: built.duration),
+                validationDelegate: validator
             )
-            let parent = CALayer()
-            parent.frame = CGRect(origin: .zero, size: renderSize)
-            parent.addSublayer(videoLayer)
-            parent.addSublayer(overlay)
-            built.videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
-                postProcessingAsVideoLayer: videoLayer, in: parent
-            )
+            if !valid || !validator.issues.isEmpty {
+                stage = "validate[\(validator.issues.joined(separator: " | "))]"
+                throw MediaError.exportFailed
+            }
             #endif
+            stage = "export"
 
             let outputDir = ProjectStore.mediaDirectory(for: project.id).deletingLastPathComponent()
             let outputURL = outputDir.appendingPathComponent("export-\(Int(Date().timeIntervalSince1970)).mp4")
@@ -90,7 +88,12 @@ final class ExportService {
             }
         } catch {
             stopProgressPolling()
+            #if DEBUG
+            let ns = error as NSError
+            phase = .failed("[\(stage)/\(CompositionBuilder.lastStep)] \(ns.domain) \(ns.code): \(error.localizedDescription)")
+            #else
             phase = .failed(error.localizedDescription)
+            #endif
             Haptics.error()
         }
     }
@@ -115,3 +118,23 @@ final class ExportService {
         progressTimer = nil
     }
 }
+
+#if DEBUG
+/// Collects AVVideoComposition validation failures for diagnostics.
+final class CompositionValidator: NSObject, AVVideoCompositionValidationHandling {
+    var issues: [String] = []
+
+    func videoComposition(_ vc: AVVideoComposition, shouldContinueValidatingAfterFindingInvalidValueForKey key: String) -> Bool {
+        issues.append("invalid value for key \(key)"); return true
+    }
+    func videoComposition(_ vc: AVVideoComposition, shouldContinueValidatingAfterFindingEmptyTimeRange timeRange: CMTimeRange) -> Bool {
+        issues.append(String(format: "empty time range %.3f-%.3f", timeRange.start.seconds, timeRange.end.seconds)); return true
+    }
+    func videoComposition(_ vc: AVVideoComposition, shouldContinueValidatingAfterFindingInvalidTimeRangeIn instruction: AVVideoCompositionInstructionProtocol) -> Bool {
+        issues.append(String(format: "invalid instruction range %.3f-%.3f", instruction.timeRange.start.seconds, instruction.timeRange.end.seconds)); return true
+    }
+    func videoComposition(_ vc: AVVideoComposition, shouldContinueValidatingAfterFindingInvalidTrackIDIn instruction: AVVideoCompositionInstructionProtocol, layerInstruction: AVVideoCompositionLayerInstruction, asset: AVAsset) -> Bool {
+        issues.append("invalid trackID in instruction"); return true
+    }
+}
+#endif

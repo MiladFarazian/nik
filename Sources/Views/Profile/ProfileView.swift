@@ -1,7 +1,9 @@
+import StoreKit
 import SwiftUI
 
 struct ProfileView: View {
     @Environment(Entitlements.self) private var entitlements
+    @Environment(StoreService.self) private var store
     @State private var showPaywall = false
 
     var body: some View {
@@ -9,8 +11,7 @@ struct ProfileView: View {
             List {
                 Section {
                     if entitlements.isPro {
-                        Label("nik Pro — active", systemImage: "crown.fill")
-                            .foregroundStyle(Theme.proBadge)
+                        activeProStatus
                     } else {
                         Button {
                             showPaywall = true
@@ -48,10 +49,15 @@ struct ProfileView: View {
 
                 #if DEBUG
                 Section("Debug") {
-                    Toggle("Pro entitlement", isOn: Binding(
-                        get: { entitlements.isPro },
-                        set: { entitlements.isPro = $0 }
+                    Toggle("Force Pro entitlement", isOn: Binding(
+                        get: { entitlements.debugForcePro },
+                        set: { entitlements.debugForcePro = $0 }
                     ))
+                    if store.isPro {
+                        Text("Real StoreKit entitlement: active")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
                 }
                 #endif
             }
@@ -61,13 +67,43 @@ struct ProfileView: View {
             .sheet(isPresented: $showPaywall) { PaywallView() }
         }
     }
+
+    /// Live subscription state: which product backs the entitlement, and
+    /// (when known) its renewal date. Falls back to a plain "active" label
+    /// when the real product isn't resolved yet (e.g. DEBUG override).
+    @ViewBuilder
+    private var activeProStatus: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label("nik Pro — active", systemImage: "crown.fill")
+                .foregroundStyle(Theme.proBadge)
+            if let product = store.activeProduct {
+                Text(subtitle(for: product))
+                    .font(.footnote)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+    }
+
+    private func subtitle(for product: Product) -> String {
+        let name = product.id == StoreService.yearlyProductID ? "Yearly" : "Monthly"
+        if let expiration = store.activeExpirationDate {
+            let formatted = expiration.formatted(date: .abbreviated, time: .omitted)
+            return "\(name) plan · renews \(formatted)"
+        }
+        return "\(name) plan"
+    }
 }
 
-/// Contextual paywall sheet. StoreKit 2 products plug in behind the buttons;
-/// the DEBUG toggle in Profile simulates the entitlement meanwhile.
+/// Contextual paywall sheet. Product-driven pricing via StoreKit 2, with an
+/// always-visible dismiss control and no countdown/urgency dark patterns —
+/// see PLAN.md §1 on the transparent-copy stance.
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(Entitlements.self) private var entitlements
+    @Environment(StoreService.self) private var store
+
+    @State private var selectedProductID = StoreService.yearlyProductID
+    @State private var isRestoring = false
+    @State private var restoreMessage: String?
 
     var body: some View {
         VStack(spacing: 22) {
@@ -103,29 +139,33 @@ struct PaywallView: View {
 
             Spacer()
 
-            VStack(spacing: 10) {
-                Button {
-                    // StoreKit purchase goes here.
-                    entitlements.isPro = true
-                    Haptics.success()
-                    dismiss()
-                } label: {
-                    VStack(spacing: 2) {
-                        Text("Try free for 7 days")
-                            .font(.system(size: 17, weight: .semibold))
-                        Text("then $39.99/year — cancel anytime")
-                            .font(.system(size: 12))
-                            .opacity(0.85)
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(Theme.accentGradient, in: RoundedRectangle(cornerRadius: 14))
-                }
+            planPicker
 
-                Button("Restore purchases") {}
+            if let error = store.purchaseError {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+            if let restoreMessage {
+                Text(restoreMessage)
                     .font(.footnote)
                     .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+
+            VStack(spacing: 10) {
+                purchaseButton
+
+                Button("Restore purchases") {
+                    Task { await restore() }
+                }
+                .font(.footnote)
+                .foregroundStyle(Theme.textSecondary)
+                .disabled(isRestoring || store.isPurchasing)
+                .opacity(isRestoring ? 0.5 : 1)
             }
             .padding(.horizontal)
             .padding(.bottom, 20)
@@ -133,6 +173,186 @@ struct PaywallView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.surface1)
         .preferredColorScheme(.dark)
+        .task {
+            if store.products.isEmpty {
+                await store.loadProducts()
+            }
+        }
+    }
+
+    // MARK: - Plan picker
+
+    private var selectedProduct: Product? {
+        store.products.first { $0.id == selectedProductID } ?? store.yearlyProduct
+    }
+
+    @ViewBuilder
+    private var planPicker: some View {
+        VStack(spacing: 10) {
+            planRow(
+                productID: StoreService.yearlyProductID,
+                product: store.yearlyProduct,
+                title: "Yearly",
+                placeholderPrice: "$39.99/year",
+                detail: yearlyDetail
+            )
+            planRow(
+                productID: StoreService.monthlyProductID,
+                product: store.monthlyProduct,
+                title: "Monthly",
+                placeholderPrice: "$5.99/month",
+                detail: store.monthlyProduct.map { "\($0.displayPrice)/month" } ?? "$5.99/month"
+            )
+        }
+        .padding(.horizontal)
+    }
+
+    /// True while products haven't loaded yet, or the yearly product's real
+    /// StoreKit config includes a free-trial introductory offer. Placeholder
+    /// copy assumes a trial (matching Nik.storekit) until the real product loads.
+    private var hasYearlyTrial: Bool {
+        guard let product = store.yearlyProduct else { return true }
+        return product.subscription?.introductoryOffer?.paymentMode == .freeTrial
+    }
+
+    private var yearlyDetail: String {
+        guard let product = store.yearlyProduct else {
+            return "7 days free, then $39.99/year"
+        }
+        if let introOffer = product.subscription?.introductoryOffer, introOffer.paymentMode == .freeTrial {
+            return "\(formattedPeriod(introOffer.period)) free, then \(product.displayPrice)/year"
+        }
+        return "\(product.displayPrice)/year"
+    }
+
+    private func formattedPeriod(_ period: Product.SubscriptionPeriod) -> String {
+        switch period.unit {
+        case .day: return period.value == 1 ? "1 day" : "\(period.value) days"
+        case .week: return period.value == 1 ? "1 week" : "\(period.value) weeks"
+        case .month: return period.value == 1 ? "1 month" : "\(period.value) months"
+        case .year: return period.value == 1 ? "1 year" : "\(period.value) years"
+        @unknown default: return "\(period.value)"
+        }
+    }
+
+    private func planRow(productID: String, product: Product?, title: String, placeholderPrice: String, detail: String) -> some View {
+        let isSelected = selectedProductID == productID
+        return Button {
+            selectedProductID = productID
+            Haptics.selection()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Text(store.isLoadingProducts && product == nil ? placeholderPrice : detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                Spacer()
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Theme.accent : .white.opacity(0.3))
+            }
+            .padding(14)
+            .background(
+                isSelected ? Theme.surface2 : Theme.surface1,
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Theme.accent : .clear, lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Purchase
+
+    @ViewBuilder
+    private var purchaseButton: some View {
+        Button {
+            Task { await purchase() }
+        } label: {
+            VStack(spacing: 2) {
+                if store.isPurchasing {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Text(purchaseButtonTitle)
+                        .font(.system(size: 17, weight: .semibold))
+                    Text(subtitleForSelectedPlan)
+                        .font(.system(size: 12))
+                        .opacity(0.85)
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+            .background(Theme.accentGradient, in: RoundedRectangle(cornerRadius: 14))
+        }
+        .disabled(store.isPurchasing)
+    }
+
+    private var purchaseButtonTitle: String {
+        if selectedProductID == StoreService.yearlyProductID {
+            return hasYearlyTrial ? "Try free for \(formattedPeriodShort)" : "Subscribe yearly"
+        }
+        return "Subscribe monthly"
+    }
+
+    /// Short form of the yearly trial length for the button title, e.g. "7 days".
+    private var formattedPeriodShort: String {
+        guard let period = store.yearlyProduct?.subscription?.introductoryOffer?.period else {
+            return "7 days"
+        }
+        return formattedPeriod(period)
+    }
+
+    private var subtitleForSelectedPlan: String {
+        if selectedProductID == StoreService.yearlyProductID {
+            return "\(yearlyDetail) — cancel anytime"
+        } else if let monthly = store.monthlyProduct {
+            return "\(monthly.displayPrice)/month — cancel anytime"
+        } else {
+            return "$5.99/month — cancel anytime"
+        }
+    }
+
+    private func purchase() async {
+        guard let product = selectedProduct else {
+            // Products haven't loaded (offline / StoreKit unavailable). Try once more
+            // rather than leaving the user stuck on a dead button.
+            await store.loadProducts()
+            return
+        }
+        do {
+            let outcome = try await store.purchase(product)
+            switch outcome {
+            case .success:
+                Haptics.success()
+                dismiss()
+            case .pending:
+                restoreMessage = "Your purchase is awaiting approval. We'll unlock Pro as soon as it's confirmed."
+            case .userCancelled:
+                break
+            }
+        } catch {
+            store.purchaseError = error.localizedDescription
+        }
+    }
+
+    private func restore() async {
+        isRestoring = true
+        restoreMessage = nil
+        await store.restore()
+        isRestoring = false
+        if store.isPro {
+            Haptics.success()
+            dismiss()
+        } else if store.purchaseError == nil {
+            restoreMessage = "No active purchases found for this Apple ID."
+        }
     }
 
     private func benefit(_ text: String) -> some View {

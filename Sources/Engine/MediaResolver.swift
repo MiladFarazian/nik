@@ -24,15 +24,19 @@ struct MediaResolver {
             guard let fill = project.fills.first(where: { $0.id == slot.id }) else {
                 throw MediaError.missingFill
             }
-            guard let asset = PhotoLibrary.asset(withIdentifier: fill.assetLocalIdentifier) else {
-                throw MediaError.assetUnavailable
-            }
             if fill.isVideo {
-                let url = try await PhotoLibrary.exportVideo(asset: asset, to: mediaDir)
+                let url = try await Self.localVideoURL(
+                    assetLocalIdentifier: fill.assetLocalIdentifier, projectID: project.id
+                )
                 resolved[slot.id] = ResolvedSlot(slotIndex: slot.id, url: url, isFromPhoto: false)
             } else {
+                guard let asset = PhotoLibrary.asset(withIdentifier: fill.assetLocalIdentifier) else {
+                    throw MediaError.assetUnavailable
+                }
                 let image = try await PhotoLibrary.loadImage(asset: asset)
-                let url = mediaDir.appendingPathComponent("photo-\(fill.assetLocalIdentifier.hashValue.magnitude).mov")
+                let url = mediaDir.appendingPathComponent(
+                    "photo-\(Self.sanitizedName(fill.assetLocalIdentifier)).mov"
+                )
                 if !FileManager.default.fileExists(atPath: url.path) {
                     try await PhotoVideoEncoder.encode(
                         image: image, duration: slot.duration + 0.5, to: url
@@ -43,6 +47,37 @@ struct MediaResolver {
             progress?(Double(index + 1) / total)
         }
         return resolved
+    }
+
+    /// Stable, per-process-invariant filename for a PHAsset localIdentifier.
+    /// `hashValue` is randomized per launch (Swift's default string hashing seed),
+    /// so it can never be used for an on-disk cache key — sanitize the identifier
+    /// instead (localIdentifiers look like "ABCD-...-1234/L0/001").
+    static func sanitizedName(_ identifier: String) -> String {
+        identifier
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+    }
+
+    /// Returns the project-sandbox copy of a video asset, exporting it from the
+    /// Photos library on first use and caching it under a stable filename. Called
+    /// by the composition pipeline and by the trim UI. Subsequent launches hit the
+    /// cache (no Photos round-trip) because the filename is deterministic.
+    static func localVideoURL(assetLocalIdentifier: String, projectID: UUID) async throws -> URL {
+        let dir = ProjectStore.mediaDirectory(for: projectID)
+        let destination = dir.appendingPathComponent("video-\(sanitizedName(assetLocalIdentifier)).mov")
+        if FileManager.default.fileExists(atPath: destination.path) { return destination }
+
+        guard let asset = PhotoLibrary.asset(withIdentifier: assetLocalIdentifier) else {
+            throw MediaError.assetUnavailable
+        }
+        // PhotoLibrary.exportVideo writes under its own (unstable) filename; move the
+        // result to our stable name so the cache survives across launches.
+        let exported = try await PhotoLibrary.exportVideo(asset: asset, to: dir)
+        if exported == destination { return destination }
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.moveItem(at: exported, to: destination)
+        return destination
     }
 }
 

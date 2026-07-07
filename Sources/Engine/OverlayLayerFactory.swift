@@ -1,248 +1,262 @@
 import Foundation
 import UIKit
-import AVFoundation
+import CoreImage
+import CoreGraphics
 
-/// Builds the CALayer tree burned into exports via AVVideoCompositionCoreAnimationTool.
-/// All positions come from unit coordinates in the models so the SwiftUI preview
-/// (which draws the same layers as views) matches the export pixel-for-pixel.
-enum OverlayLayerFactory {
-
-    /// CA layer animations must anchor to AVCoreAnimationBeginTimeAtZero, never 0.
-    private static func caTime(_ seconds: Double) -> CFTimeInterval {
-        AVCoreAnimationBeginTimeAtZero + max(0, seconds)
+/// Immutable, Sendable snapshot of everything the compositor needs to burn
+/// overlays per frame. Every text / caption word / watermark is rasterized to a
+/// CGImage ONCE (up front, on the main actor) and wrapped as a CIImage so the
+/// per-frame compositor only has to translate/scale/composite — no text layout.
+///
+/// All `frame`s are in render-pixel coordinates with a **top-left origin, y-down**
+/// (the same convention the SwiftUI preview and the old CALayer tree used). The
+/// compositor converts to Core Image's bottom-left / y-up space when placing.
+///
+/// `@unchecked Sendable`: the stored CIImages are immutable value snapshots that
+/// are only read on the compositor thread; they are never mutated after `make`.
+final class OverlaySpec: @unchecked Sendable {
+    struct TextItem {
+        let image: CIImage
+        let frame: CGRect
+        let start: Double
+        let duration: Double
+    }
+    struct WordItem {
+        let white: CIImage
+        let accent: CIImage?   // karaoke: accent-colored copy composited once time >= start
+        let frame: CGRect
+        let start: Double
+        let duration: Double
+    }
+    struct CaptionItem {
+        let background: CIImage?      // block style rounded plate
+        let backgroundFrame: CGRect
+        let words: [WordItem]
+        let start: Double
+        let duration: Double
+        let style: CaptionStyle
+    }
+    struct WatermarkItem {
+        let image: CIImage
+        let frame: CGRect
     }
 
-    static func makeOverlayLayer(
+    let renderSize: CGSize
+    let texts: [TextItem]
+    let captions: [CaptionItem]
+    let watermark: WatermarkItem?
+
+    init(renderSize: CGSize, texts: [TextItem], captions: [CaptionItem], watermark: WatermarkItem?) {
+        self.renderSize = renderSize
+        self.texts = texts
+        self.captions = captions
+        self.watermark = watermark
+    }
+}
+
+/// Builds an `OverlaySpec` by rasterizing the project's overlay models. Runs on the
+/// main actor because it uses UIGraphicsImageRenderer / UIKit text drawing. This is
+/// a one-time cost per export (not per frame). Rasterization happens at full render
+/// resolution (scale 1) so text stays crisp without supersampling.
+enum OverlayBuilder {
+
+    @MainActor
+    static func make(
         textLayers: [TextLayerSpec],
         captions: [CaptionSegment],
         captionStyle: CaptionStyle,
         watermark: Bool,
         renderSize: CGSize
-    ) -> CALayer {
-        let container = CALayer()
-        container.frame = CGRect(origin: .zero, size: renderSize)
-        container.isGeometryFlipped = true  // CA origin is bottom-left; we lay out top-down
+    ) -> OverlaySpec {
+        let s = renderSize.width / 1080.0   // render scale relative to the 1080-wide authoring space
 
+        var texts: [OverlaySpec.TextItem] = []
         for spec in textLayers {
-            container.addSublayer(makeTextLayer(spec: spec, renderSize: renderSize))
+            if let item = makeText(spec: spec, renderSize: renderSize, s: s) { texts.append(item) }
         }
+
+        var caps: [OverlaySpec.CaptionItem] = []
         if captionStyle != .none {
             for segment in captions {
-                container.addSublayer(
-                    makeCaptionLayer(segment: segment, style: captionStyle, renderSize: renderSize)
-                )
+                if let item = makeCaption(segment: segment, style: captionStyle, renderSize: renderSize, s: s) {
+                    caps.append(item)
+                }
             }
         }
-        if watermark {
-            container.addSublayer(makeWatermarkLayer(renderSize: renderSize))
-        }
-        return container
+
+        var wm: OverlaySpec.WatermarkItem?
+        if watermark { wm = makeWatermark(renderSize: renderSize, s: s) }
+
+        return OverlaySpec(renderSize: renderSize, texts: texts, captions: caps, watermark: wm)
     }
 
-    // MARK: - Template text layers
+    // MARK: - Template text
 
-    static func attributedString(for spec: TextLayerSpec, scale: CGFloat = 1) -> NSAttributedString {
-        let font = UIFont.systemFont(ofSize: spec.fontSize * scale, weight: .heavy)
+    @MainActor
+    private static func makeText(spec: TextLayerSpec, renderSize: CGSize, s: CGFloat) -> OverlaySpec.TextItem? {
+        let fontSize = spec.fontSize * s
+        let font = UIFont.systemFont(ofSize: fontSize, weight: .heavy)
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: UIColor.white,
         ]
-        switch spec.style {
-        case .outlined:
+        if spec.style == .outlined {
             attributes[.strokeColor] = UIColor.black
-            attributes[.strokeWidth] = -4.0   // negative = stroke + fill
-        case .bold, .block, .caption:
-            break
+            attributes[.strokeWidth] = -4.0    // negative == stroke + fill
         }
-        return NSAttributedString(string: spec.text, attributes: attributes)
-    }
+        let text = NSAttributedString(string: spec.text, attributes: attributes)
 
-    private static func makeTextLayer(spec: TextLayerSpec, renderSize: CGSize) -> CALayer {
-        let text = attributedString(for: spec)
-        let padding: CGFloat = spec.style == .block ? 28 : 8
+        let padding: CGFloat = (spec.style == .block ? 28 : 8) * s
+        let maxWidth = max(1, renderSize.width - 80 * s)
         let bounds = text.boundingRect(
-            with: CGSize(width: renderSize.width - 80, height: .greatestFiniteMagnitude),
+            with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin], context: nil
         )
-        let size = CGSize(width: ceil(bounds.width) + padding * 2, height: ceil(bounds.height) + padding * 2)
+        let contentSize = CGSize(width: ceil(bounds.width), height: ceil(bounds.height))
+        let holderSize = CGSize(width: contentSize.width + padding * 2, height: contentSize.height + padding * 2)
 
-        let holder = CALayer()
-        holder.frame = CGRect(
-            x: (renderSize.width - size.width) / 2,
-            y: renderSize.height * spec.relativeY - size.height / 2,
-            width: size.width, height: size.height
-        )
-        if spec.style == .block {
-            holder.backgroundColor = UIColor.black.withAlphaComponent(0.75).cgColor
-            holder.cornerRadius = 18
+        let image = rasterize(size: holderSize) { _ in
+            if spec.style == .block {
+                let rect = CGRect(origin: .zero, size: holderSize)
+                let path = UIBezierPath(roundedRect: rect, cornerRadius: 18 * s)
+                UIColor.black.withAlphaComponent(0.75).setFill()
+                path.fill()
+            }
+            let textRect = CGRect(x: padding, y: padding, width: contentSize.width, height: contentSize.height)
+            text.draw(with: textRect, options: [.usesLineFragmentOrigin], context: nil)
         }
+        guard let image else { return nil }
 
-        let textLayer = CALayer()
-        textLayer.contents = rasterize(text, size: CGSize(width: ceil(bounds.width), height: ceil(bounds.height)),
-                                       shadow: spec.style == .bold)
-        textLayer.frame = holder.bounds.insetBy(dx: padding, dy: padding)
-        holder.addSublayer(textLayer)
-
-        // Visible only during [start, start+duration]; pop-in scale.
-        holder.opacity = 0
-        let visibility = CAKeyframeAnimation(keyPath: "opacity")
-        visibility.values = [0, 1, 1, 0]
-        visibility.keyTimes = [0, 0.001, 0.999, 1]
-        visibility.beginTime = caTime(spec.start)
-        visibility.duration = spec.duration
-        visibility.isRemovedOnCompletion = false
-        visibility.fillMode = .backwards
-        holder.add(visibility, forKey: "visibility")
-
-        let pop = CAKeyframeAnimation(keyPath: "transform.scale")
-        pop.values = [0.8, 1.06, 1.0]
-        pop.keyTimes = [0, 0.6, 1]
-        pop.beginTime = caTime(spec.start)
-        pop.duration = min(0.35, spec.duration)
-        pop.isRemovedOnCompletion = false
-        pop.fillMode = .both
-        holder.add(pop, forKey: "pop")
-
-        return holder
+        let frame = CGRect(
+            x: (renderSize.width - holderSize.width) / 2,
+            y: renderSize.height * spec.relativeY - holderSize.height / 2,
+            width: holderSize.width, height: holderSize.height
+        )
+        return OverlaySpec.TextItem(image: image, frame: frame, start: spec.start, duration: spec.duration)
     }
 
     // MARK: - Captions
 
-    private static func makeCaptionLayer(
-        segment: CaptionSegment, style: CaptionStyle, renderSize: CGSize
-    ) -> CALayer {
+    @MainActor
+    private static func makeCaption(
+        segment: CaptionSegment, style: CaptionStyle, renderSize: CGSize, s: CGFloat
+    ) -> OverlaySpec.CaptionItem? {
         let fontSize = renderSize.width * 0.055
         let font = UIFont.systemFont(ofSize: fontSize, weight: .heavy)
-        let holder = CALayer()
+        let spacing = fontSize * 0.28
 
         let words = segment.words.isEmpty
             ? [CaptionWord(text: segment.text, start: segment.start, duration: segment.duration)]
             : segment.words
 
-        // Lay words out on one centered line (segments are pre-paged to 3-4 words).
         var wordSizes: [CGSize] = []
-        let spacing: CGFloat = fontSize * 0.28
         for word in words {
             let size = (word.text as NSString).size(withAttributes: [.font: font])
             wordSizes.append(CGSize(width: ceil(size.width), height: ceil(size.height)))
         }
         let lineWidth = wordSizes.reduce(0) { $0 + $1.width } + spacing * CGFloat(max(0, words.count - 1))
-        let lineHeight = wordSizes.map(\.height).max() ?? fontSize
+        let lineHeight = wordSizes.map(\.height).max() ?? ceil(fontSize)
+        guard lineWidth >= 1, lineHeight >= 1 else { return nil }
 
-        holder.frame = CGRect(
+        let holderFrame = CGRect(
             x: (renderSize.width - lineWidth) / 2,
             y: renderSize.height * 0.78 - lineHeight / 2,
             width: lineWidth, height: lineHeight
         )
 
+        var background: CIImage?
         if style == .block {
-            holder.backgroundColor = UIColor.black.withAlphaComponent(0.7).cgColor
-            holder.cornerRadius = 12
-        }
-
-        var x: CGFloat = 0
-        for (index, word) in words.enumerated() {
-            let layer = CALayer()
-            let attributed = NSAttributedString(string: word.text, attributes: [
-                .font: font,
-                .foregroundColor: UIColor.white,
-                .strokeColor: UIColor.black,
-                .strokeWidth: style == .block ? 0 : -4.0,
-            ])
-            layer.contents = rasterize(attributed, size: CGSize(width: wordSizes[index].width, height: lineHeight))
-            layer.frame = CGRect(x: x, y: 0, width: wordSizes[index].width, height: lineHeight)
-            x += wordSizes[index].width + spacing
-            holder.addSublayer(layer)
-
-            switch style {
-            case .karaoke:
-                // Accent-colored copy fades in on top as the word is spoken.
-                let accent = CALayer()
-                let accentText = NSAttributedString(string: word.text, attributes: [
-                    .font: font,
-                    .foregroundColor: UIColor(red: 0.61, green: 0.36, blue: 1, alpha: 1),
-                    .strokeColor: UIColor.black,
-                    .strokeWidth: -4.0,
-                ])
-                accent.contents = rasterize(accentText, size: CGSize(width: wordSizes[index].width, height: lineHeight))
-                accent.frame = layer.bounds
-                accent.opacity = 0
-                let sweep = CAKeyframeAnimation(keyPath: "opacity")
-                sweep.values = [0, 1]
-                sweep.keyTimes = [0, 0.2]
-                sweep.beginTime = caTime(word.start)
-                sweep.duration = max(0.1, word.duration)
-                sweep.isRemovedOnCompletion = false
-                sweep.fillMode = .both
-                accent.add(sweep, forKey: "karaoke")
-                layer.addSublayer(accent)
-            case .bounce:
-                let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-                scale.values = [1.0, 1.25, 1.0]
-                scale.keyTimes = [0, 0.4, 1]
-                scale.beginTime = caTime(word.start)
-                scale.duration = max(0.12, word.duration)
-                scale.isRemovedOnCompletion = false
-                scale.fillMode = .both
-                layer.add(scale, forKey: "bounce")
-            case .plain, .block, .none:
-                break
+            background = rasterize(size: CGSize(width: lineWidth, height: lineHeight)) { _ in
+                let rect = CGRect(x: 0, y: 0, width: lineWidth, height: lineHeight)
+                let path = UIBezierPath(roundedRect: rect, cornerRadius: 12 * s)
+                UIColor.black.withAlphaComponent(0.7).setFill()
+                path.fill()
             }
         }
 
-        holder.opacity = 0
-        let visibility = CAKeyframeAnimation(keyPath: "opacity")
-        visibility.values = [0, 1, 1, 0]
-        visibility.keyTimes = [0, 0.02, 0.98, 1]
-        visibility.beginTime = caTime(segment.start)
-        visibility.duration = max(0.15, segment.duration)
-        visibility.isRemovedOnCompletion = false
-        visibility.fillMode = .backwards
-        holder.add(visibility, forKey: "visibility")
+        let accentColor = UIColor(red: 0.61, green: 0.36, blue: 1, alpha: 1)
+        var items: [OverlaySpec.WordItem] = []
+        var x = holderFrame.minX
+        for (index, word) in words.enumerated() {
+            let wordSize = CGSize(width: wordSizes[index].width, height: lineHeight)
+            let strokeWidth: CGFloat = style == .block ? 0 : -4.0
 
-        return holder
+            let white = rasterize(size: wordSize) { _ in
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: font, .foregroundColor: UIColor.white,
+                    .strokeColor: UIColor.black, .strokeWidth: strokeWidth,
+                ]
+                NSAttributedString(string: word.text, attributes: attrs)
+                    .draw(with: CGRect(origin: .zero, size: wordSize),
+                          options: [.usesLineFragmentOrigin], context: nil)
+            }
+            var accent: CIImage?
+            if style == .karaoke {
+                accent = rasterize(size: wordSize) { _ in
+                    let attrs: [NSAttributedString.Key: Any] = [
+                        .font: font, .foregroundColor: accentColor,
+                        .strokeColor: UIColor.black, .strokeWidth: -4.0,
+                    ]
+                    NSAttributedString(string: word.text, attributes: attrs)
+                        .draw(with: CGRect(origin: .zero, size: wordSize),
+                              options: [.usesLineFragmentOrigin], context: nil)
+                }
+            }
+            if let white {
+                items.append(OverlaySpec.WordItem(
+                    white: white, accent: accent,
+                    frame: CGRect(x: x, y: holderFrame.minY, width: wordSize.width, height: wordSize.height),
+                    start: word.start, duration: word.duration
+                ))
+            }
+            x += wordSize.width + spacing
+        }
+
+        return OverlaySpec.CaptionItem(
+            background: background, backgroundFrame: holderFrame, words: items,
+            start: segment.start, duration: max(0.15, segment.duration), style: style
+        )
     }
 
     // MARK: - Watermark
 
-    private static func makeWatermarkLayer(renderSize: CGSize) -> CALayer {
+    @MainActor
+    private static func makeWatermark(renderSize: CGSize, s: CGFloat) -> OverlaySpec.WatermarkItem? {
         let fontSize = renderSize.width * 0.032
-        let text = NSAttributedString(string: "made with nik", attributes: [
-            .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.55),
-        ])
-        let size = (text.string as NSString).size(withAttributes: [
-            .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold)
-        ])
-        let layer = CALayer()
-        layer.contents = rasterize(text, size: CGSize(width: ceil(size.width) + 4, height: ceil(size.height) + 4))
-        layer.frame = CGRect(
-            x: renderSize.width - size.width - 32,
-            y: renderSize.height * 0.06,
-            width: ceil(size.width) + 4, height: ceil(size.height) + 4
-        )
-        return layer
-    }
-
-    /// Draws an attributed string into a bitmap. The offline CA export renderer is
-    /// far more reliable compositing plain bitmap contents than live CATextLayers,
-    /// and this also renders color emoji correctly.
-    private static func rasterize(_ text: NSAttributedString, size: CGSize, shadow: Bool = false) -> CGImage? {
-        guard size.width >= 1, size.height >= 1 else { return nil }
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 2
-        format.opaque = false
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
-        let image = renderer.image { context in
-            if shadow {
-                context.cgContext.setShadow(
-                    offset: CGSize(width: 0, height: 3), blur: 8,
-                    color: UIColor.black.withAlphaComponent(0.8).cgColor
-                )
-            }
-            text.draw(with: CGRect(origin: .zero, size: size),
+        let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+        let string = "made with nik"
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font, .foregroundColor: UIColor.white.withAlphaComponent(0.55),
+        ]
+        let textSize = (string as NSString).size(withAttributes: attrs)
+        let imageSize = CGSize(width: ceil(textSize.width) + 4, height: ceil(textSize.height) + 4)
+        let image = rasterize(size: imageSize) { _ in
+            NSAttributedString(string: string, attributes: attrs)
+                .draw(with: CGRect(origin: .zero, size: imageSize),
                       options: [.usesLineFragmentOrigin], context: nil)
         }
-        return image.cgImage
+        guard let image else { return nil }
+        let frame = CGRect(
+            x: renderSize.width - imageSize.width - 32 * s,
+            y: renderSize.height * 0.06,
+            width: imageSize.width, height: imageSize.height
+        )
+        return OverlaySpec.WatermarkItem(image: image, frame: frame)
+    }
+
+    // MARK: - Rasterization
+
+    /// Draws into a bitmap at render resolution (scale 1) and returns it as a CIImage
+    /// (origin top-left when authored; `CIImage(cgImage:)` presents it upright).
+    @MainActor
+    private static func rasterize(size: CGSize, draw: (CGContext) -> Void) -> CIImage? {
+        guard size.width >= 1, size.height >= 1 else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        let uiImage = renderer.image { ctx in draw(ctx.cgContext) }
+        guard let cg = uiImage.cgImage else { return nil }
+        return CIImage(cgImage: cg)
     }
 }

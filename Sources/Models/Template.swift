@@ -9,6 +9,15 @@ enum TransitionKind: String, Codable, CaseIterable {
     case punchIn     // instant 1.15x scale for emphasis
 }
 
+/// A color grade applied to a slot's clip by the custom compositor (Core Image).
+enum FilterKind: String, Codable, CaseIterable {
+    case none        // passthrough
+    case warm        // CITemperatureAndTint, warmer target neutral
+    case cool        // CITemperatureAndTint, cooler target neutral
+    case mono        // CIPhotoEffectMono
+    case vivid       // CIColorControls: boosted saturation + slight contrast
+}
+
 /// One fillable segment of a template.
 struct TemplateSlot: Codable, Identifiable, Hashable {
     var id: Int              // slot index, 0-based
@@ -16,13 +25,16 @@ struct TemplateSlot: Codable, Identifiable, Hashable {
     var transition: TransitionKind
     var speed: Double        // playback rate applied to the source clip (1.0 = normal)
     var hint: String?        // e.g. "wide shot", "close-up of product"
+    var filter: FilterKind?  // optional color grade; nil == .none. Decodes back-compat via optional.
 
-    init(id: Int, duration: Double, transition: TransitionKind = .cut, speed: Double = 1.0, hint: String? = nil) {
+    init(id: Int, duration: Double, transition: TransitionKind = .cut, speed: Double = 1.0,
+         hint: String? = nil, filter: FilterKind? = nil) {
         self.id = id
         self.duration = duration
         self.transition = transition
         self.speed = speed
         self.hint = hint
+        self.filter = filter
     }
 }
 

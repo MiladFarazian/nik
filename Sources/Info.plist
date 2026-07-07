@@ -34,6 +34,8 @@
 	<string>Nik transcribes your videos on-device to generate automatic captions.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Nik uses the microphone to record voiceovers for your videos.</string>
+	<key>FacebookAppID</key>
+	<string>REPLACE_WITH_FB_APP_ID</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>instagram</string>

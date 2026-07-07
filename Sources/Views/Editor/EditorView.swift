@@ -67,7 +67,7 @@ struct EditorView: View {
         }
         .sheet(item: $editingSlot) { slot in
             SlotEditSheet(model: model, slot: slot)
-                .presentationDetents([.height(280)])
+                .presentationDetents([.height(360)])
         }
         .sheet(isPresented: $showCaptionsSheet) {
             CaptionsSheet(model: model)
