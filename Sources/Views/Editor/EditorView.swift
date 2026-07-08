@@ -40,8 +40,13 @@ struct EditorView: View {
                 .disabled(model?.isBuilding ?? true)
             }
         }
-        .task {
-            guard model == nil else { return }
+        // Keyed on projectID so a reused EditorView instance (NavigationStack view
+        // recycling) rebuilds for the new project instead of showing the previous
+        // project's model — otherwise one project's text/media bleeds into another.
+        .task(id: projectID) {
+            guard model?.project.id != projectID else { return }
+            model?.player.pause()
+            model = nil
             guard
                 let project = projectStore.projects.first(where: { $0.id == projectID }),
                 let template = templateStore.template(id: project.templateID)
