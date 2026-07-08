@@ -1,6 +1,7 @@
 import SwiftUI
 import Photos
 import AVFoundation
+import CoreGraphics
 
 // MARK: - Text layer editing
 
@@ -96,6 +97,9 @@ struct SlotEditSheet: View {
     @State private var isVideo = false
     @State private var assetLocalIdentifier = ""
     @State private var filmstripUnavailable = false
+    @State private var isManualCrop = false
+    @State private var panX = 0.0
+    @State private var panY = 0.0
 
     var body: some View {
         VStack(spacing: 20) {
@@ -153,6 +157,8 @@ struct SlotEditSheet: View {
                     .foregroundStyle(Theme.textSecondary)
             }
 
+            reframeSection
+
             Button {
                 commit()
                 dismiss()
@@ -172,6 +178,46 @@ struct SlotEditSheet: View {
         .onAppear(perform: load)
     }
 
+    // MARK: - Reframe (manual crop pan override)
+
+    private var reframeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Reframe")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Picker("Reframe mode", selection: $isManualCrop) {
+                    Text("Auto").tag(false)
+                    Text("Manual").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 160)
+                .onChange(of: isManualCrop) { _, _ in
+                    Haptics.selection()
+                }
+            }
+
+            if isManualCrop {
+                HStack(spacing: 10) {
+                    Text("Pan X")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 46, alignment: .leading)
+                    Slider(value: $panX, in: -1...1)
+                }
+                HStack(spacing: 10) {
+                    Text("Pan Y")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 46, alignment: .leading)
+                    Slider(value: $panY, in: -1...1)
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+
     private func load() {
         guard let fill = model.project.fills.first(where: { $0.id == slot.id }) else { return }
         muted = fill.muted
@@ -181,12 +227,22 @@ struct SlotEditSheet: View {
         if let asset = PhotoLibrary.asset(withIdentifier: fill.assetLocalIdentifier) {
             maxTrim = max(0, asset.duration - slot.duration * slot.speed)
         }
+        if let offset = fill.cropOffset {
+            isManualCrop = true
+            panX = Double(offset.x)
+            panY = Double(offset.y)
+        } else {
+            isManualCrop = false
+            panX = 0
+            panY = 0
+        }
     }
 
     private func commit() {
         guard var fill = model.project.fills.first(where: { $0.id == slot.id }) else { return }
         fill.muted = muted
         fill.trimStart = trimStart
+        fill.cropOffset = isManualCrop ? CGPoint(x: panX, y: panY) : nil
         Haptics.light()
         model.updateFill(fill)
     }

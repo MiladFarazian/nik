@@ -275,7 +275,7 @@ struct PaywallView: View {
             Task { await purchase() }
         } label: {
             VStack(spacing: 2) {
-                if store.isPurchasing {
+                if store.isPurchasing || store.isLoadingProducts {
                     ProgressView()
                         .tint(.white)
                 } else {
@@ -290,8 +290,9 @@ struct PaywallView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 56)
             .background(Theme.accentGradient, in: RoundedRectangle(cornerRadius: 14))
+            .opacity(store.isPurchasing || store.isLoadingProducts ? 0.7 : 1)
         }
-        .disabled(store.isPurchasing)
+        .disabled(store.isPurchasing || store.isLoadingProducts)
     }
 
     private var purchaseButtonTitle: String {
@@ -321,9 +322,17 @@ struct PaywallView: View {
 
     private func purchase() async {
         guard let product = selectedProduct else {
-            // Products haven't loaded (offline / StoreKit unavailable). Try once more
-            // rather than leaving the user stuck on a dead button.
+            // Products haven't loaded (offline / StoreKit unavailable). Retry the load
+            // and, if it still fails, tell the user instead of silently no-op'ing.
+            restoreMessage = nil
+            store.purchaseError = nil
             await store.loadProducts()
+            if selectedProduct == nil {
+                store.purchaseError = store.productsError
+                    ?? "Couldn't reach the App Store. Check your connection and try again."
+            } else {
+                await purchase()   // products arrived — proceed
+            }
             return
         }
         do {
