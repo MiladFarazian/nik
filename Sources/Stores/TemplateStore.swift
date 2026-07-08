@@ -1,10 +1,61 @@
 import Foundation
 
-/// Built-in template catalog. In production these would be server-delivered bundles
-/// (JSON + music + fonts) so new templates ship without app updates.
+/// Template catalog: compiled-in built-ins as the floor, optionally extended by a
+/// server-delivered JSON catalog (see catalog/catalog.json for the format). Remote
+/// templates merge over built-ins by id; a decode failure never clobbers anything.
+@MainActor
 @Observable
 final class TemplateStore {
+    /// Remote catalog location. nil (default) = offline: built-ins + last cached catalog only.
+    nonisolated(unsafe) static var catalogURL: URL?
+
     private(set) var templates: [Template] = TemplateStore.builtIns
+
+    private struct Catalog: Codable {
+        var schemaVersion: Int
+        var templates: [Template]
+    }
+
+    private static var cacheURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("catalog-cache.json")
+    }
+
+    init() {
+        // Last good catalog applies immediately; the network refresh comes later.
+        if let data = try? Data(contentsOf: Self.cacheURL) {
+            apply(catalogData: data, persist: false)
+        }
+    }
+
+    /// Fetches the remote catalog and merges it over the built-ins. Safe to call
+    /// repeatedly (e.g. on foreground); failures leave the current state untouched.
+    func refresh() async {
+        guard let url = Self.catalogURL else { return }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return }
+            apply(catalogData: data, persist: true)
+        } catch {
+            // Offline or server error — keep whatever we have.
+        }
+    }
+
+    private func apply(catalogData: Data, persist: Bool) {
+        guard let catalog = try? JSONDecoder().decode(Catalog.self, from: catalogData),
+              catalog.schemaVersion == 1 else { return }
+        var merged = Dictionary(uniqueKeysWithValues: Self.builtIns.map { ($0.id, $0) })
+        for template in catalog.templates {
+            merged[template.id] = template   // remote wins on id collision
+        }
+        // Built-ins keep their curated order; remote-only templates append by usage.
+        let builtInIDs = Self.builtIns.map(\.id)
+        templates = builtInIDs.compactMap { merged[$0] }
+            + catalog.templates.filter { !builtInIDs.contains($0.id) }.sorted { $0.usageCount > $1.usageCount }
+        if persist {
+            try? catalogData.write(to: Self.cacheURL, options: .atomic)
+        }
+    }
 
     func template(id: String) -> Template? {
         templates.first { $0.id == id }

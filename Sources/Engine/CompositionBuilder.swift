@@ -19,6 +19,9 @@ struct BuiltComposition {
 enum CompositionBuilder {
     /// Debug breadcrumb: last step attempted inside build(), surfaced in error banners.
     nonisolated(unsafe) static var lastStep = ""
+    /// Escape hatch for the Vision-based smart crop. When false, every slot uses the
+    /// plain centered aspect fill (and per-slot `cropOffset` overrides are still honored).
+    nonisolated(unsafe) static var smartCropEnabled = true
     static let timescale: CMTimeScale = 600
     static let dipFadeDuration = 0.22       // dip-to-black fallback when a crossfade can't overlap
     static let crossfadeOverlap = 0.35      // A/B-roll overlap when the outgoing clip has spare media
@@ -35,8 +38,9 @@ enum CompositionBuilder {
         let sourceTrack: AVAssetTrack
         let audioTrack: AVAssetTrack?
         let naturalSize: CGSize
+        let preferredTransform: CGAffineTransform   // source track rotation — for smart-crop geometry
         let assetDuration: CMTime
-        let baseTransform: CGAffineTransform
+        var baseTransform: CGAffineTransform        // centered fill, upgraded in the smart-crop pass
         var startSource: CMTime          // where in the source the slot window begins
         var baseSourceDuration: CMTime   // min(wantedSource, available) — the slot window's source
         var available: CMTime            // source remaining from startSource to end
@@ -96,7 +100,8 @@ enum CompositionBuilder {
                 slot: slot, media: media, fill: fill,
                 asset: asset,
                 sourceTrack: sourceTrack, audioTrack: audioTrackSource,
-                naturalSize: naturalSize, assetDuration: assetDuration,
+                naturalSize: naturalSize, preferredTransform: preferredTransform,
+                assetDuration: assetDuration,
                 baseTransform: transform,
                 startSource: startSource, baseSourceDuration: baseSourceDuration,
                 available: available, slotDuration: slotDuration, speed: slot.speed,
@@ -105,6 +110,59 @@ enum CompositionBuilder {
             cursor = cursor + slotDuration
         }
         let totalDuration = cursor
+
+        // MARK: Smart-crop pass — choose each slot's base transform.
+        // Priority: explicit user pan override > Vision smart crop > centered fill (already set).
+        // The Vision analysis runs concurrently across slots (task group) so a 4-slot preview
+        // pays roughly the cost of one clip's 3-frame analysis, not four.
+        do {
+            // User overrides are cheap (no Vision) — apply inline.
+            for i in infos.indices {
+                guard let offset = infos[i].fill?.cropOffset else { continue }
+                let metrics = SmartCrop.fillMetrics(
+                    naturalSize: infos[i].naturalSize,
+                    preferredTransform: infos[i].preferredTransform,
+                    renderSize: renderSize
+                )
+                // −1 reveals left/top, +1 reveals right/bottom → content pans the opposite way.
+                let dx = -CGFloat(offset.x) * metrics.maxPanX
+                let dy = -CGFloat(offset.y) * metrics.maxPanY
+                infos[i].baseTransform = SmartCrop.panned(
+                    infos[i].baseTransform, dx: dx, dy: dy, metrics: metrics
+                )
+            }
+
+            // Vision smart crop for the remaining (non-overridden) slots, concurrently.
+            if smartCropEnabled {
+                lastStep = "smart-crop"
+                let smart = await withTaskGroup(of: (Int, CGAffineTransform?).self) { group -> [Int: CGAffineTransform] in
+                    for i in infos.indices where infos[i].fill?.cropOffset == nil {
+                        let idx = i
+                        let url = infos[i].media.url
+                        let naturalSize = infos[i].naturalSize
+                        let preferred = infos[i].preferredTransform
+                        // Photos are a single encoded still → analyze one frame (zero-duration range).
+                        let range = infos[i].media.isFromPhoto
+                            ? CMTimeRange(start: infos[i].startSource, duration: .zero)
+                            : CMTimeRange(start: infos[i].startSource, duration: infos[i].baseSourceDuration)
+                        group.addTask {
+                            let transform = await SmartCrop.cropTransform(
+                                for: url, sourceRange: range,
+                                naturalSize: naturalSize, preferredTransform: preferred,
+                                renderSize: renderSize
+                            )
+                            return (idx, transform)
+                        }
+                    }
+                    var acc: [Int: CGAffineTransform] = [:]
+                    for await (idx, transform) in group where transform != nil {
+                        acc[idx] = transform
+                    }
+                    return acc
+                }
+                for (idx, transform) in smart { infos[idx].baseTransform = transform }
+            }
+        }
 
         // MARK: Transition decisions per boundary.
         // A crossfade "into" slot i overlaps the outgoing slot i-1 by `overlap` when i-1

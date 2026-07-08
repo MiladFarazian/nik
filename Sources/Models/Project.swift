@@ -8,13 +8,20 @@ struct SlotFill: Codable, Identifiable, Hashable {
     var isVideo: Bool
     var trimStart: Double        // seconds into the source clip where the slot window begins
     var muted: Bool
+    /// User pan override for the 9:16 crop, normalized to −1...1 on each axis.
+    /// nil = automatic (Vision smart crop). (0,0) = centered fill; ±1 = maximum pan
+    /// within the clamp range. x: −1 reveals the source's left edge, +1 the right;
+    /// y: −1 the top, +1 the bottom. Honored by CompositionBuilder in place of the
+    /// Vision result when set. Optional so old projects decode unchanged.
+    var cropOffset: CGPoint?
 
-    init(id: Int, assetLocalIdentifier: String, isVideo: Bool, trimStart: Double = 0, muted: Bool = false) {
+    init(id: Int, assetLocalIdentifier: String, isVideo: Bool, trimStart: Double = 0, muted: Bool = false, cropOffset: CGPoint? = nil) {
         self.id = id
         self.assetLocalIdentifier = assetLocalIdentifier
         self.isVideo = isVideo
         self.trimStart = trimStart
         self.muted = muted
+        self.cropOffset = cropOffset
     }
 }
 

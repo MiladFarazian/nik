@@ -76,14 +76,14 @@ Sources/
 **v1 — shipped in this repo (builds green, E2E-tested on simulator):**
 Template catalog (8 built-ins across 7 categories) · full clip-fill flow · composition engine (transitions, speed, photo Ken Burns, audio mix) · live-preview editor · text overlays · on-device auto-captions with 4 styles · 1080p/4K export · watermark + Pro gating + paywall UX · projects persistence · share screen.
 
-**v2 — make it real:**
-- StoreKit 2 behind the existing `Entitlements` interface; App Store Connect products.
-- Real template preview videos (bundle or CDN) replacing animated gradient placeholders.
-- Server-delivered template bundles (JSON + music + fonts, the schema is already Codable) + bundled licensed music with precomputed beat maps; slot durations snap to beats.
-- TikTok OpenSDK + `instagram-reels://` share; caption/hashtag composer on the share screen.
-- Custom compositor (Core Image): filters/LUTs, real crossfades (A/B roll), overlay burn-in that also works on simulator.
-- Per-slot trim UI with filmstrip (fixed window, content slides under it); pinch-to-reframe.
-- Smart crop: Vision saliency + face detection choosing the 9:16 crop per clip.
+**v2 — make it real (SHIPPED, waves 1-2):**
+- ✅ StoreKit 2 (`StoreService` + `Nik.storekit` scheme config) behind the `Entitlements` interface; product-driven paywall.
+- ✅ Custom compositor (`NikCompositor`, Core Image/Metal): per-slot filters (warm/cool/mono/vivid), real A/B-roll crossfades with dip-fade fallback, overlay burn-in via rasterized bitmaps — works on simulator, renders color emoji.
+- ✅ Caption/hashtag composer on the share screen + `instagram-reels://` pasteboard route with fallback chain.
+- ✅ Per-slot filmstrip trimmer (fixed window, strip drags underneath).
+- ✅ Smart crop: Vision saliency + faces choose the 9:16 framing per slot; `SlotFill.cropOffset` user override honored by the builder (UI later); `CompositionBuilder.smartCropEnabled` escape hatch.
+- ✅ Remote template catalog: `TemplateStore.refresh()` fetches `catalog/catalog.json`-format JSON (enum-fallback decoding, cache, built-ins as floor); `Template.beatAlignedSlots()` ready for wiring.
+- Remaining for v2.1: real template preview videos, TikTok OpenSDK, pinch-to-reframe UI on top of `cropOffset`, wiring beat alignment into the fill flow.
 
 **v3 — growth & AI:**
 - Deep links `nik://template/{id}` + template attribution in shares (the flywheel).

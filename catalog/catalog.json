@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "templates": [
+    {
+      "id": "golden-hour-glow-01",
+      "name": "Golden Hour Glow",
+      "author": "nik",
+      "category": "Travel",
+      "slots": [
+        { "id": 0, "duration": 2.0, "transition": "zoomIn", "speed": 1.0, "hint": "sunset arrival", "filter": "warm" },
+        { "id": 1, "duration": 1.5, "transition": "crossfade", "speed": 1.0, "hint": "silhouette", "filter": "warm" },
+        { "id": 2, "duration": 1.5, "transition": "cut", "speed": 1.0, "hint": "candid laugh", "filter": "warm" },
+        { "id": 3, "duration": 2.5, "transition": "crossfade", "speed": 1.0, "hint": "golden skyline", "filter": "warm" }
+      ],
+      "textLayers": [
+        {
+          "id": "BEB4BEE6-6DE5-4FAD-9D06-9F252C4300B7",
+          "text": "chasing golden hour",
+          "start": 0.2,
+          "duration": 1.8,
+          "relativeY": 0.26,
+          "fontSize": 72,
+          "style": "outlined"
+        }
+      ],
+      "music": {
+        "name": "Amber Skies",
+        "bpm": 88,
+        "beatTimes": [0, 0.68, 1.36, 2.05, 2.73, 3.41, 4.09, 4.77, 5.45, 6.14, 6.82, 7.5]
+      },
+      "usageCount": 410000,
+      "isPro": false,
+      "previewColors": ["#FFD59E", "#FF7A59"]
+    },
+    {
+      "id": "night-drift-01",
+      "name": "Night Drift",
+      "author": "nik",
+      "category": "Velocity",
+      "slots": [
+        { "id": 0, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "city lights", "filter": "cool" },
+        { "id": 1, "duration": 0.6, "transition": "punchIn", "speed": 1.6, "hint": "street blur", "filter": "cool" },
+        { "id": 2, "duration": 0.8, "transition": "cut", "speed": 1.0, "hint": "reflection", "filter": "mono" },
+        { "id": 3, "duration": 1.6, "transition": "punchIn", "speed": 0.6, "hint": "hero shot", "filter": "cool" }
+      ],
+      "textLayers": [
+        {
+          "id": "6FF2F2B7-5935-4611-A474-EA514E1587C5",
+          "text": "3am thoughts",
+          "start": 0,
+          "duration": 1.4,
+          "relativeY": 0.2,
+          "fontSize": 80,
+          "style": "block"
+        }
+      ],
+      "music": {
+        "name": "Neon Pulse",
+        "bpm": 128,
+        "beatTimes": [0, 0.47, 0.94, 1.41, 1.88, 2.34, 2.81, 3.28, 3.75, 4.22]
+      },
+      "usageCount": 275000,
+      "isPro": true,
+      "previewColors": ["#5C9BFF", "#1B1F3B"]
+    },
+    {
+      "id": "product-reveal-01",
+      "name": "Product Reveal",
+      "author": "nik",
+      "category": "Business",
+      "slots": [
+        { "id": 0, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "unboxing" },
+        { "id": 1, "duration": 1.2, "transition": "crossfade", "speed": 1.0, "hint": "detail close-up", "filter": "vivid" },
+        { "id": 2, "duration": 2.8, "transition": "punchIn", "speed": 1.0, "hint": "hero reveal", "filter": "vivid" }
+      ],
+      "textLayers": [
+        {
+          "id": "0C3832DC-2B24-4D18-A7CF-BB19F4D05F4F",
+          "text": "NEW DROP",
+          "start": 0,
+          "duration": 2.0,
+          "relativeY": 0.2,
+          "fontSize": 84,
+          "style": "block"
+        },
+        {
+          "id": "82735F51-1F9A-4DC3-8346-3E3CA9D75570",
+          "text": "shop now →",
+          "start": 4.0,
+          "duration": 2.0,
+          "relativeY": 0.78,
+          "fontSize": 60,
+          "style": "caption"
+        }
+      ],
+      "music": {
+        "name": "Clean Product Beat",
+        "bpm": 100
+      },
+      "usageCount": 98000,
+      "isPro": false,
+      "previewColors": ["#24FF6F", "#0B0B0B"]
+    }
+  ]
+}

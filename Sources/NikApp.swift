@@ -17,6 +17,7 @@ struct NikApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
+                .task { await templateStore.refresh() }
                 .environment(templateStore)
                 .environment(projectStore)
                 .environment(photoLibrary)
