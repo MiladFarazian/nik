@@ -32,6 +32,7 @@ struct TemplateFeedView: View {
                     .padding(.horizontal, 12)
                 }
                 .padding(.top, 4)
+                .padding(.bottom, 24)   // clear the floating tab bar
             }
             .background(Theme.background)
             .navigationTitle("nik")

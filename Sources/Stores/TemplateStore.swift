@@ -22,7 +22,12 @@ final class TemplateStore {
     }
 
     init() {
-        // Last good catalog applies immediately; the network refresh comes later.
+        // Bundled catalog ships with the app so its templates are available offline.
+        if let url = Bundle.main.url(forResource: "catalog", withExtension: "json"),
+           let data = try? Data(contentsOf: url) {
+            apply(catalogData: data, persist: false)
+        }
+        // A previously-fetched remote catalog (newer than the bundle) wins over it.
         if let data = try? Data(contentsOf: Self.cacheURL) {
             apply(catalogData: data, persist: false)
         }

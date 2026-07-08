@@ -29,6 +29,7 @@ struct ClipFillView: View {
         .background(Theme.background)
         .navigationTitle(template.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .task { await library.requestAccess() }
     }
 

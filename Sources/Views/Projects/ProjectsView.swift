@@ -25,6 +25,7 @@ struct ProjectsView: View {
                             }
                         }
                         .padding(12)
+                        .padding(.bottom, 24)   // clear the floating tab bar
                     }
                 }
             }

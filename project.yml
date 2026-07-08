@@ -10,6 +10,7 @@ settings:
     TARGETED_DEVICE_FAMILY: "1"
     INFOPLIST_KEY_UILaunchScreen_Generation: YES
     CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: Y6PNCRVZH7
 schemes:
   Nik:
     build:
@@ -24,6 +25,8 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+      - path: catalog
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.miladfarazian.nik
