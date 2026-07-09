@@ -170,9 +170,18 @@ private struct ShareScreen: View {
     let onCreateAnother: () -> Void
 
     @State private var caption: String = ""
+    @State private var didSeedCaption = false
     @State private var copiedCaption = false
     @State private var copyNote: String?
     @State private var noteTask: Task<Void, Never>?
+
+    /// A ready-to-post starter caption: the trend's own hook when we have one,
+    /// else the template's on-screen text, so users aren't staring at a blank field.
+    private var seedCaption: String {
+        if let hook = template.trend?.exampleCaption, !hook.isEmpty { return hook }
+        if let text = template.textLayers.first?.text { return text }
+        return ""
+    }
 
     /// Instagram's sticker-share pasteboard route only accepts videos under ~50MB;
     /// past that it silently fails, so we fall back to the camera/share-sheet route.
@@ -225,6 +234,10 @@ private struct ShareScreen: View {
             }
         }
         .task {
+            if !didSeedCaption {
+                caption = seedCaption
+                didSeedCaption = true
+            }
             guard !savedToPhotos else { return }
             if (try? await PhotoLibrary.saveToPhotos(videoURL: url)) != nil {
                 savedToPhotos = true
