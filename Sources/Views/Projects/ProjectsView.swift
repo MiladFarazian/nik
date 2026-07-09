@@ -42,7 +42,11 @@ struct ProjectsView: View {
         let template = templateStore.template(id: project.templateID)
         VStack(alignment: .leading, spacing: 6) {
             ZStack {
-                if let template {
+                if let template, let poster = TemplatePreviewVideo.poster(for: template) {
+                    Image(uiImage: poster)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else if let template {
                     AnimatedTemplatePreview(template: template)
                 } else {
                     Theme.surface2

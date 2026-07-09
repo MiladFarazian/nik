@@ -12,13 +12,35 @@ struct TemplatePagerView: View {
 
     @State private var selection: String?
     @State private var showPaywall = false
+    /// Guards the first recordView: SwiftUI can write the resting top item back
+    /// through the scrollPosition binding at initial layout before we scroll to
+    /// `initial`, which would both open the wrong page's context and log a phantom
+    /// view. We seed `selection = initial.id` and swallow that first binding echo.
+    @State private var didSeedSelection = false
+
+    /// Templates rotated so `initial` is first. `scrollPosition(id:)` can't reliably
+    /// jump a LazyVStack to an off-screen item on first render (it settles near the
+    /// top instead), so we open on index 0 and let the feed continue/wrap from there.
+    private let ordered: [Template]
+
+    init(templates: [Template], initial: Template, onUseTemplate: @escaping (Template) -> Void) {
+        self.templates = templates
+        self.initial = initial
+        self.onUseTemplate = onUseTemplate
+        if let i = templates.firstIndex(where: { $0.id == initial.id }) {
+            ordered = Array(templates[i...] + templates[..<i])
+        } else {
+            ordered = [initial] + templates
+        }
+        _selection = State(initialValue: initial.id)
+    }
 
     var body: some View {
         // Native vertical paging (iOS 17). The old rotationEffect(90°)+UIScreen.bounds
         // TabView trick rendered letterboxed/offset on iOS 26 — never again.
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
-                ForEach(templates) { template in
+                ForEach(ordered) { template in
                     page(for: template)
                         .containerRelativeFrame([.horizontal, .vertical])
                         .id(template.id)
@@ -31,14 +53,18 @@ struct TemplatePagerView: View {
         .scrollPosition(id: $selection)
         .background(Color.black)
         .ignoresSafeArea()
-        .onAppear { if selection == nil { selection = initial.id } }
+        .onAppear {
+            // Count the initial page's view once, here — not in onChange, so a
+            // binding echo of the resting item can't log a different template.
+            personalization.recordView(initial)
+            didSeedSelection = true
+        }
         .onChange(of: selection) { _, newID in
-            // Record a view each time a template's page becomes the active one. This
-            // fires for the initial page too (selection goes nil -> initial.id on appear)
-            // and for every subsequent swipe, so each is counted exactly once.
-            if let newID, let template = templates.first(where: { $0.id == newID }) {
-                personalization.recordView(template)
-            }
+            // Record a view for each subsequently-swiped-to page. The first echo
+            // (initial layout) is swallowed by didSeedSelection.
+            guard didSeedSelection, let newID, newID != initial.id,
+                  let template = templates.first(where: { $0.id == newID }) else { return }
+            personalization.recordView(template)
         }
         .overlay(alignment: .topLeading) {
             Button {
@@ -58,7 +84,7 @@ struct TemplatePagerView: View {
 
     private func page(for template: Template) -> some View {
         ZStack(alignment: .bottom) {
-            TemplatePreviewVideo(template: template)
+            TemplatePreviewVideo(template: template, isActive: template.id == selection)
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 14) {

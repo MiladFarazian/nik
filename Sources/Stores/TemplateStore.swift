@@ -19,8 +19,11 @@ final class TemplateStore {
     }
 
     private static var cacheURL: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("catalog-cache.json")
+        // Application Support is NOT created for you on iOS — ensure it exists so the
+        // catalog cache actually persists (otherwise every launch re-hits the network).
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("catalog-cache.json")
     }
 
     init() {
@@ -56,9 +59,15 @@ final class TemplateStore {
             merged[template.id] = template   // remote wins on id collision
         }
         // Built-ins keep their curated order; remote-only templates append by usage.
-        let builtInIDs = Self.builtIns.map(\.id)
-        templates = builtInIDs.compactMap { merged[$0] }
-            + catalog.templates.filter { !builtInIDs.contains($0.id) }.sorted { $0.usageCount > $1.usageCount }
+        // De-dupe remote ids (a malformed catalog with repeats would otherwise yield
+        // duplicate Identifiable ids → undefined behavior in ForEach/fullScreenCover).
+        let builtInIDs = Set(Self.builtIns.map(\.id))
+        var seen = builtInIDs
+        let remoteOnly = catalog.templates
+            .filter { !builtInIDs.contains($0.id) }
+            .filter { seen.insert($0.id).inserted }
+            .sorted { $0.usageCount > $1.usageCount }
+        templates = Self.builtIns.map(\.id).compactMap { merged[$0] } + remoteOnly
         if persist {
             try? catalogData.write(to: Self.cacheURL, options: .atomic)
         }

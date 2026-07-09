@@ -7,10 +7,13 @@ import AVFoundation
 /// keeps only neighbors alive).
 struct TemplatePreviewVideo: View {
     let template: Template
+    /// Only the active pager page decodes/plays; neighbors stay paused to avoid
+    /// 2-3 simultaneous decodes (LazyVStack instantiates neighbors early).
+    var isActive: Bool = true
 
     var body: some View {
         if let url = Self.previewURL(for: template) {
-            LoopingVideoView(url: url)
+            LoopingVideoView(url: url, isActive: isActive)
         } else {
             AnimatedTemplatePreview(template: template)
         }
@@ -31,6 +34,7 @@ struct TemplatePreviewVideo: View {
 
 private struct LoopingVideoView: View {
     let url: URL
+    let isActive: Bool
     @State private var player = AVQueuePlayer()
     @State private var looper: AVPlayerLooper?
 
@@ -42,7 +46,10 @@ private struct LoopingVideoView: View {
                     looper = AVPlayerLooper(player: player, templateItem: item)
                 }
                 player.isMuted = true
-                player.play()
+                if isActive { player.play() }
+            }
+            .onChange(of: isActive) { _, active in
+                if active { player.play() } else { player.pause() }
             }
             .onDisappear { player.pause() }
     }

@@ -106,7 +106,9 @@ final class PersonalizationStore {
         // Trend: editorial strength faded by how old the trend is (never below 35%).
         let rawTrend = template.trend?.score ?? 25
         let ageDays = template.trend?.ageDays ?? 30
-        let freshness = max(0.35, 1 - ageDays / 45)
+        // Clamp both ends: floor keeps aged trends visible; ceiling stops a
+        // future-dated trend (authoring typo / clock skew) from over-ranking.
+        let freshness = min(1, max(0.35, 1 - ageDays / 45))
         let trend = rawTrend * freshness
 
         // Affinity: learned taste for this template's tags + its category.
@@ -146,13 +148,15 @@ final class PersonalizationStore {
     /// last decay, then advances the decay date. Keeps taste responsive to recent behavior.
     private func applyDecay() {
         let days = Date().timeIntervalSince(lastDecayDate) / 86_400
-        guard days >= 1 else { return }
-        let factor = pow(Self.decayPerDay, days.rounded(.down))
-        guard factor < 1 else { return }
+        let wholeDays = days.rounded(.down)
+        guard wholeDays >= 1 else { return }
+        let factor = pow(Self.decayPerDay, wholeDays)
         for key in affinity.keys {
             affinity[key] = (affinity[key] ?? 0) * factor
         }
-        lastDecayDate = Date()
+        // Advance by the whole days consumed, not to now, so the sub-day remainder
+        // carries forward (otherwise frequent launches decay slower than 0.9/day).
+        lastDecayDate = lastDecayDate.addingTimeInterval(wholeDays * 86_400)
         save()
     }
 
