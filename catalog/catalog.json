@@ -100,6 +100,537 @@
       "usageCount": 98000,
       "isPro": false,
       "previewColors": ["#24FF6F", "#0B0B0B"]
+    },
+    {
+      "id": "food-jutsu-01",
+      "name": "Food Jutsu",
+      "author": "nik",
+      "category": "Trending",
+      "slots": [
+        { "id": 0, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "dramatic anime-style hand sign, intense stare" },
+        { "id": 1, "duration": 0.2, "transition": "punchIn", "speed": 0.5, "hint": "flash snap on the beat drop" },
+        { "id": 2, "duration": 3.8, "transition": "cut", "speed": 1.0, "hint": "hero food/drink reveal, slow settle" }
+      ],
+      "textLayers": [
+        {
+          "id": "414C93BD-CE76-4303-B9E0-BC8845CD8F88",
+          "text": "wait for it",
+          "start": 0,
+          "duration": 2.0,
+          "relativeY": 0.85,
+          "fontSize": 48,
+          "style": "caption"
+        }
+      ],
+      "music": {
+        "name": "Delirious",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 4500000,
+      "isPro": false,
+      "previewColors": ["#FF4D4D", "#1B1B2F"],
+      "tags": ["food", "meme", "aesthetic"],
+      "trend": {
+        "score": 95,
+        "addedAt": "2026-07-08",
+        "source": "TikTok · audio: 'Delirious' (Yoshimasa Terui) · 36M+ posts, #foodjutsutrend",
+        "exampleCaption": "summoned lunch with my bare hands"
+      }
+    },
+    {
+      "id": "wipe-the-lens-01",
+      "name": "Wipe The Lens",
+      "author": "nik",
+      "category": "Business",
+      "slots": [
+        { "id": 0, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "fixed camera, empty counter or space" },
+        { "id": 1, "duration": 0.5, "transition": "cut", "speed": 1.0, "hint": "hand swipes across lens, motion blur" },
+        { "id": 2, "duration": 2.5, "transition": "cut", "speed": 1.0, "hint": "same framing, finished product/space" }
+      ],
+      "textLayers": [
+        {
+          "id": "13A9F4B3-0855-4E22-A386-41403BC835F6",
+          "text": "wait, let me wipe the camera",
+          "start": 0,
+          "duration": 2.0,
+          "relativeY": 0.88,
+          "fontSize": 48,
+          "style": "caption"
+        },
+        {
+          "id": "81BC32CE-44F4-49E2-86F0-F7DAC55B24A8",
+          "text": "there we go",
+          "start": 2.5,
+          "duration": 2.0,
+          "relativeY": 0.88,
+          "fontSize": 48,
+          "style": "caption"
+        }
+      ],
+      "music": {
+        "name": "Clean Reveal",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 3600000,
+      "isPro": false,
+      "previewColors": ["#F5F5F0", "#111111"],
+      "tags": ["business", "aesthetic"],
+      "trend": {
+        "score": 88,
+        "addedAt": "2026-07-08",
+        "source": "IG Reels · format by @james.and.antler — product/space reveals",
+        "exampleCaption": "wait, let me wipe the camera… there we go"
+      }
+    },
+    {
+      "id": "pixel-stretch-01",
+      "name": "Pixel Stretch",
+      "author": "nik",
+      "category": "Photo Dump",
+      "slots": [
+        { "id": 0, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "still hero photo, sharp, centered subject" },
+        { "id": 1, "duration": 2.0, "transition": "crossfade", "speed": 1.0, "hint": "same image, colors streaking outward" }
+      ],
+      "textLayers": [],
+      "music": {
+        "name": "Y2K Glow",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 2850000,
+      "isPro": false,
+      "previewColors": ["#FF6EC7", "#7B2FF7"],
+      "tags": ["aesthetic", "fashion"],
+      "trend": {
+        "score": 82,
+        "addedAt": "2026-07-08",
+        "source": "IG · 2008 pixel-stretch technique rediscovered — no-audio visual format"
+      }
+    },
+    {
+      "id": "camera-roll-dump-01",
+      "name": "Camera Roll Dump",
+      "author": "nik",
+      "category": "Photo Dump",
+      "slots": [
+        { "id": 0, "duration": 1.3, "transition": "cut", "speed": 1.0, "hint": "candid friends shot" },
+        { "id": 1, "duration": 1.3, "transition": "cut", "speed": 1.0, "hint": "saved meme or screenshot" },
+        { "id": 2, "duration": 1.3, "transition": "cut", "speed": 1.0, "hint": "casual food photo" },
+        { "id": 3, "duration": 1.3, "transition": "cut", "speed": 1.0, "hint": "pet or random detail" },
+        { "id": 4, "duration": 1.3, "transition": "cut", "speed": 1.0, "hint": "outfit mirror selfie" },
+        { "id": 5, "duration": 1.5, "transition": "crossfade", "speed": 1.0, "hint": "sunset closing shot" }
+      ],
+      "textLayers": [
+        {
+          "id": "EC24D1DE-DAF0-4538-A4D8-2E27C9F9C5AB",
+          "text": "camera roll dump",
+          "start": 0,
+          "duration": 2.0,
+          "relativeY": 0.1,
+          "fontSize": 66,
+          "style": "block"
+        }
+      ],
+      "music": {
+        "name": "Golden Nostalgia",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 1350000,
+      "isPro": false,
+      "previewColors": ["#FFD6A5", "#4A4E69"],
+      "tags": ["aesthetic", "friends"],
+      "trend": {
+        "score": 70,
+        "addedAt": "2026-07-08",
+        "source": "IG Reels · evergreen photo-dump format, weekly refreshes",
+        "exampleCaption": "no thoughts just my camera roll"
+      }
+    },
+    {
+      "id": "take-me-there-01",
+      "name": "Take Me There",
+      "author": "nik",
+      "category": "Travel",
+      "slots": [
+        { "id": 0, "duration": 2.5, "transition": "cut", "speed": 1.0, "hint": "wide establishing shot, golden hour", "filter": "warm" },
+        { "id": 1, "duration": 2.5, "transition": "crossfade", "speed": 1.0, "hint": "close detail — food, texture, hands", "filter": "warm" },
+        { "id": 2, "duration": 2.5, "transition": "crossfade", "speed": 0.75, "hint": "slow-mo movement — walking, water, fabric" },
+        { "id": 3, "duration": 2.5, "transition": "crossfade", "speed": 1.0, "hint": "hero landscape or skyline" }
+      ],
+      "textLayers": [
+        {
+          "id": "7129C750-401D-457B-9E53-66184B85F08E",
+          "text": "take me to [this]",
+          "start": 1.0,
+          "duration": 3.0,
+          "relativeY": 0.5,
+          "fontSize": 72,
+          "style": "outlined"
+        }
+      ],
+      "music": {
+        "name": "Take Me (To the Moon)",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 2350000,
+      "isPro": false,
+      "previewColors": ["#FFB86B", "#2E86AB"],
+      "tags": ["travel", "nature", "aesthetic"],
+      "trend": {
+        "score": 78,
+        "addedAt": "2026-07-08",
+        "source": "IG Reels · audio: 'Take Me (To the Moon)' — Ian Asher & D A N N Y",
+        "exampleCaption": "take me to [your city]"
+      }
+    },
+    {
+      "id": "velocity-rush-01",
+      "name": "Velocity Rush 2026",
+      "author": "nik",
+      "category": "Velocity",
+      "slots": [
+        { "id": 0, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "normal speed action" },
+        { "id": 1, "duration": 0.8, "transition": "cut", "speed": 2.5, "hint": "ramp up, motion blur", "filter": "vivid" },
+        { "id": 2, "duration": 0.3, "transition": "punchIn", "speed": 0.3, "hint": "snap slow-mo beat hit, pose" },
+        { "id": 3, "duration": 1.9, "transition": "cut", "speed": 1.5, "hint": "ramped continuation" },
+        { "id": 4, "duration": 2.0, "transition": "crossfade", "speed": 1.0, "hint": "hero payoff, normal speed" }
+      ],
+      "textLayers": [],
+      "music": {
+        "name": "Velocity 2026",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 1100000,
+      "isPro": false,
+      "previewColors": ["#00F0FF", "#FF00E5"],
+      "tags": ["music", "sports", "fitness"],
+      "trend": {
+        "score": 68,
+        "addedAt": "2026-07-08",
+        "source": "CapCut/TikTok · 'Trend Velocity 2026' template wave, #velocityedit"
+      }
+    },
+    {
+      "id": "day-in-my-life-01",
+      "name": "Day In My Life: Specific",
+      "author": "nik",
+      "category": "Vlog",
+      "slots": [
+        { "id": 0, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "morning routine, establish the specific context" },
+        { "id": 1, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "commute or transition" },
+        { "id": 2, "duration": 2.0, "transition": "cut", "speed": 1.5, "hint": "work/task montage, sped up" },
+        { "id": 3, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "meal or break, candid" },
+        { "id": 4, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "second work block or hobby" },
+        { "id": 5, "duration": 2.0, "transition": "crossfade", "speed": 1.0, "hint": "evening wind-down" }
+      ],
+      "textLayers": [
+        {
+          "id": "85A0CFB1-A883-4A05-A963-EA595A7ECD6D",
+          "text": "day in my life as a...",
+          "start": 0,
+          "duration": 2.5,
+          "relativeY": 0.12,
+          "fontSize": 72,
+          "style": "bold"
+        }
+      ],
+      "music": {
+        "name": "Soft Vlog Keys",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 1600000,
+      "isPro": false,
+      "previewColors": ["#FFE5B4", "#6B705C"],
+      "tags": ["study", "family", "aesthetic"],
+      "trend": {
+        "score": 72,
+        "addedAt": "2026-07-08",
+        "source": "TikTok · DITL with a specific frame — generic is dead, specificity wins",
+        "exampleCaption": "day in my life as a 24-year-old who quit corporate"
+      }
+    },
+    {
+      "id": "founder-diaries-01",
+      "name": "Founder Diaries",
+      "author": "nik",
+      "category": "Business",
+      "slots": [
+        { "id": 0, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "laptop open before sunrise" },
+        { "id": 1, "duration": 2.0, "transition": "cut", "speed": 1.2, "hint": "hands-on work — making or packing" },
+        { "id": 2, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "customer touch — call or thank-you note" },
+        { "id": 3, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "team check-in" },
+        { "id": 4, "duration": 2.0, "transition": "crossfade", "speed": 1.0, "hint": "late night, laptop glow, reflective" }
+      ],
+      "textLayers": [
+        {
+          "id": "9C909A3F-6816-422B-A138-7CC27D0B7910",
+          "text": "day in the life of a founder",
+          "start": 0,
+          "duration": 2.5,
+          "relativeY": 0.12,
+          "fontSize": 72,
+          "style": "bold"
+        }
+      ],
+      "music": {
+        "name": "Quiet Grind",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 1850000,
+      "isPro": true,
+      "previewColors": ["#1C2541", "#5BC0BE"],
+      "tags": ["business", "tech"],
+      "trend": {
+        "score": 74,
+        "addedAt": "2026-07-08",
+        "source": "TikTok Discover · 'Day in the Life of a Founder' — authenticity over polish",
+        "exampleCaption": "6am: nobody said this would be easy"
+      }
+    },
+    {
+      "id": "team-clap-01",
+      "name": "Team Clap",
+      "author": "nik",
+      "category": "Business",
+      "slots": [
+        { "id": 0, "duration": 1.5, "transition": "cut", "speed": 1.0, "hint": "person 1 claps on the beat" },
+        { "id": 1, "duration": 1.5, "transition": "cut", "speed": 1.0, "hint": "person 2 claps, matching energy" },
+        { "id": 2, "duration": 1.5, "transition": "cut", "speed": 1.0, "hint": "person 3 claps" },
+        { "id": 3, "duration": 1.5, "transition": "cut", "speed": 1.0, "hint": "whole team, final clap together" }
+      ],
+      "textLayers": [
+        {
+          "id": "776CD02E-3BD6-499B-A977-C355B8B378E8",
+          "text": "meet the team",
+          "start": 0,
+          "duration": 2.0,
+          "relativeY": 0.1,
+          "fontSize": 66,
+          "style": "block"
+        }
+      ],
+      "music": {
+        "name": "Clap Beat",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 155000,
+      "isPro": false,
+      "previewColors": ["#FFD23F", "#EE4266"],
+      "tags": ["business", "friends"],
+      "trend": {
+        "score": 60,
+        "addedAt": "2026-07-08",
+        "source": "CapCut weekly trends · team clap-to-the-beat transitions",
+        "exampleCaption": "meet the team 👏"
+      }
+    },
+    {
+      "id": "headphone-swap-01",
+      "name": "Headphone Swap",
+      "author": "nik",
+      "category": "Trending",
+      "slots": [
+        { "id": 0, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "swap headphones, playful handoff" },
+        { "id": 1, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "person 1 reacts to the music" },
+        { "id": 2, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "person 2 reacts, contrasting expression" },
+        { "id": 3, "duration": 2.0, "transition": "crossfade", "speed": 1.0, "hint": "both react together, close two-shot" }
+      ],
+      "textLayers": [
+        {
+          "id": "270344F8-BC32-4960-BAE0-BDFD960DD940",
+          "text": "guess whose music this is",
+          "start": 0,
+          "duration": 2.0,
+          "relativeY": 0.85,
+          "fontSize": 48,
+          "style": "caption"
+        }
+      ],
+      "music": {
+        "name": "Mystery Mix",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 2100000,
+      "isPro": true,
+      "previewColors": ["#9B5DE5", "#F15BB5"],
+      "tags": ["music", "friends", "couples"],
+      "trend": {
+        "score": 76,
+        "addedAt": "2026-07-08",
+        "source": "IG/TikTok · headphone-swap reaction format — interaction-based wave",
+        "exampleCaption": "guess whose music this is"
+      }
+    },
+    {
+      "id": "i-saved-my-01",
+      "name": "I Saved My…",
+      "author": "nik",
+      "category": "Memes",
+      "slots": [
+        { "id": 0, "duration": 1.0, "transition": "punchIn", "speed": 1.5, "hint": "dramatic fall to the floor, exaggerated" },
+        { "id": 1, "duration": 3.0, "transition": "cut", "speed": 1.0, "hint": "on the floor, holding the saved item up triumphantly" }
+      ],
+      "textLayers": [
+        {
+          "id": "C6552832-3BC0-4D59-9AC2-3F241B3D11AE",
+          "text": "POV: i fell but i saved my...",
+          "start": 0,
+          "duration": 3.0,
+          "relativeY": 0.15,
+          "fontSize": 68,
+          "style": "bold"
+        }
+      ],
+      "music": {
+        "name": "Survivor",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 2600000,
+      "isPro": false,
+      "previewColors": ["#FF206E", "#FFD23F"],
+      "tags": ["meme", "friends"],
+      "trend": {
+        "score": 80,
+        "addedAt": "2026-07-08",
+        "source": "IG Reels · 'POV: I fell but I saved my…' — audio: Survivor (Destiny's Child) sibling wave",
+        "exampleCaption": "POV: i fell but i saved my iced coffee"
+      }
+    },
+    {
+      "id": "the-strut-01",
+      "name": "The Strut",
+      "author": "nik",
+      "category": "Memes",
+      "slots": [
+        { "id": 0, "duration": 1.5, "transition": "cut", "speed": 1.0, "hint": "unbothered, low energy pose", "filter": "mono" },
+        { "id": 1, "duration": 1.5, "transition": "punchIn", "speed": 1.2, "hint": "confident strut toward camera, high-fashion energy" }
+      ],
+      "textLayers": [
+        {
+          "id": "6983684A-647A-4BF2-AE51-05810A5488D5",
+          "text": "me after one good thing happens",
+          "start": 0,
+          "duration": 2.0,
+          "relativeY": 0.85,
+          "fontSize": 62,
+          "style": "outlined"
+        }
+      ],
+      "music": {
+        "name": "Strut Anthem",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 870000,
+      "isPro": false,
+      "previewColors": ["#2B2D42", "#EF233C"],
+      "tags": ["meme", "fitness"],
+      "trend": {
+        "score": 66,
+        "addedAt": "2026-07-08",
+        "source": "TikTok · confident-strut meme wave (@Funny.danler template lineage)",
+        "exampleCaption": "me after one good thing happens"
+      }
+    },
+    {
+      "id": "top-10-countdown-01",
+      "name": "Top 10 Countdown",
+      "author": "nik",
+      "category": "Trending",
+      "slots": [
+        { "id": 0, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "item #10 reveal" },
+        { "id": 1, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "item #9 reveal" },
+        { "id": 2, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "item #8 reveal" },
+        { "id": 3, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "item #7 reveal" },
+        { "id": 4, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "item #6 reveal" },
+        { "id": 5, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "item #5 reveal" },
+        { "id": 6, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "item #4 reveal" },
+        { "id": 7, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "item #3 reveal" },
+        { "id": 8, "duration": 1.0, "transition": "cut", "speed": 1.0, "hint": "item #2 reveal" },
+        { "id": 9, "duration": 3.0, "transition": "punchIn", "speed": 1.0, "hint": "item #1 hero reveal, hold" }
+      ],
+      "textLayers": [
+        {
+          "id": "38E64727-7883-45F3-82F5-DF9E12183ACF",
+          "text": "top 10",
+          "start": 0,
+          "duration": 2.0,
+          "relativeY": 0.1,
+          "fontSize": 66,
+          "style": "block"
+        },
+        {
+          "id": "B4EB0895-31E3-426B-9BFE-A36279FB34E5",
+          "text": "#1",
+          "start": 9.0,
+          "duration": 3.0,
+          "relativeY": 0.5,
+          "fontSize": 84,
+          "style": "bold"
+        }
+      ],
+      "music": {
+        "name": "Countdown Pulse",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 420000,
+      "isPro": false,
+      "previewColors": ["#F72585", "#3A0CA3"],
+      "tags": ["aesthetic", "business"],
+      "trend": {
+        "score": 62,
+        "addedAt": "2026-07-08",
+        "source": "CapCut weekly trends · top-10 ranking countdown, brands ranking products/orders",
+        "exampleCaption": "ranking my top 10, #1 will surprise you"
+      }
+    },
+    {
+      "id": "sketch-to-real-01",
+      "name": "Sketch To Real",
+      "author": "nik",
+      "category": "Trending",
+      "slots": [
+        { "id": 0, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "still pose in final look, camera locked" },
+        { "id": 1, "duration": 2.0, "transition": "cut", "speed": 1.0, "hint": "sketch overlay drawing onto the scene" },
+        { "id": 2, "duration": 2.0, "transition": "crossfade", "speed": 1.0, "hint": "sketch morphs into the real reveal, pose change" }
+      ],
+      "textLayers": [
+        {
+          "id": "AA1CC92D-572E-43B9-8557-B87364DE9D40",
+          "text": "sketch to real",
+          "start": 0,
+          "duration": 2.0,
+          "relativeY": 0.85,
+          "fontSize": 62,
+          "style": "outlined"
+        }
+      ],
+      "music": {
+        "name": "Creative Flow",
+        "bpm": null,
+        "beatTimes": null
+      },
+      "usageCount": 1720000,
+      "isPro": true,
+      "previewColors": ["#FFFFFF", "#FF9F1C"],
+      "tags": ["fashion", "beauty", "aesthetic"],
+      "trend": {
+        "score": 73,
+        "addedAt": "2026-07-08",
+        "source": "IG Reels · 'Sketch My Outfit' — sketch-overlay morphs into the real look",
+        "exampleCaption": "drew it, then wore it"
+      }
     }
   ]
 }

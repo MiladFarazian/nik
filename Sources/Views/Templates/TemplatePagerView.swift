@@ -4,29 +4,42 @@ import SwiftUI
 struct TemplatePagerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(Entitlements.self) private var entitlements
+    @Environment(PersonalizationStore.self) private var personalization
 
     let templates: [Template]
     let initial: Template
     let onUseTemplate: (Template) -> Void
 
-    @State private var selection: String = ""
+    @State private var selection: String?
     @State private var showPaywall = false
 
     var body: some View {
-        TabView(selection: $selection) {
-            ForEach(templates) { template in
-                page(for: template)
-                    .tag(template.id)
+        // Native vertical paging (iOS 17). The old rotationEffect(90°)+UIScreen.bounds
+        // TabView trick rendered letterboxed/offset on iOS 26 — never again.
+        ScrollView(.vertical) {
+            LazyVStack(spacing: 0) {
+                ForEach(templates) { template in
+                    page(for: template)
+                        .containerRelativeFrame([.horizontal, .vertical])
+                        .id(template.id)
+                }
             }
+            .scrollTargetLayout()
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .rotationEffect(.degrees(90))            // vertical paging trick
-        .frame(width: UIScreen.main.bounds.height, height: UIScreen.main.bounds.width)
-        .rotationEffect(.degrees(-90))
-        .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
+        .scrollTargetBehavior(.paging)
+        .scrollIndicators(.hidden)
+        .scrollPosition(id: $selection)
         .background(Color.black)
         .ignoresSafeArea()
-        .onAppear { selection = initial.id }
+        .onAppear { if selection == nil { selection = initial.id } }
+        .onChange(of: selection) { _, newID in
+            // Record a view each time a template's page becomes the active one. This
+            // fires for the initial page too (selection goes nil -> initial.id on appear)
+            // and for every subsequent swipe, so each is counted exactly once.
+            if let newID, let template = templates.first(where: { $0.id == newID }) {
+                personalization.recordView(template)
+            }
+        }
         .overlay(alignment: .topLeading) {
             Button {
                 dismiss()
@@ -65,6 +78,24 @@ struct TemplatePagerView: View {
                     Text("@\(template.author)")
                         .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.7))
+                    if let trend = template.trend {
+                        VStack(alignment: .leading, spacing: 2) {
+                            if let source = trend.source {
+                                Label(source, systemImage: "chart.line.uptrend.xyaxis")
+                                    .font(.footnote)
+                                    .foregroundStyle(.white.opacity(0.7))
+                                    .lineLimit(2)
+                            }
+                            if let caption = trend.exampleCaption {
+                                Text("\u{201C}\(caption)\u{201D}")
+                                    .font(.footnote)
+                                    .italic()
+                                    .foregroundStyle(.white.opacity(0.5))
+                                    .lineLimit(2)
+                            }
+                        }
+                        .padding(.top, 2)
+                    }
                     HStack(spacing: 4) {
                         Image(systemName: "photo.on.rectangle")
                         Text("\(template.clipCount) clips · \(template.durationLabel)")

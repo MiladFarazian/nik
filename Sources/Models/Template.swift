@@ -122,6 +122,37 @@ enum TemplateCategory: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Provenance and strength of a real-world trend a template is modeled on.
+/// All-optional so existing catalogs and persisted projects decode unchanged.
+struct TrendInfo: Codable, Hashable {
+    /// Editorial trend strength 0–100 (decays as the trend ages; feeds ranking).
+    var score: Double
+    /// ISO-8601 day the trend was added to the catalog, e.g. "2026-07-01".
+    /// Kept as a string so catalog authoring stays trivial; parsed lazily.
+    var addedAt: String?
+    /// Where the trend lives, human-readable — e.g.
+    /// "IG Reels · audio: 'Golden Hour' — format seen on @jarrettcreates".
+    var source: String?
+    /// A real example caption/hook from the trend, shown as posting inspiration.
+    var exampleCaption: String?
+
+    /// Days since the trend was added (nil when unknown).
+    var ageDays: Double? {
+        guard let addedAt,
+              let date = ISO8601DateFormatter.trendDay.date(from: addedAt) else { return nil }
+        return Date().timeIntervalSince(date) / 86_400
+    }
+}
+
+extension ISO8601DateFormatter {
+    /// Parses catalog "YYYY-MM-DD" trend dates.
+    static let trendDay: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        return formatter
+    }()
+}
+
 struct Template: Codable, Identifiable, Hashable {
     var id: String
     var name: String
@@ -134,6 +165,10 @@ struct Template: Codable, Identifiable, Hashable {
     var isPro: Bool
     /// Two hex colors used to render the animated placeholder preview card.
     var previewColors: [String]
+    /// Interest/vibe tags used by adaptive ranking, e.g. ["travel", "aesthetic"].
+    var tags: [String]?
+    /// Real-world trend this template is modeled on (nil for evergreen templates).
+    var trend: TrendInfo?
 
     var duration: Double { slots.reduce(0) { $0 + $1.duration } }
     var clipCount: Int { slots.count }

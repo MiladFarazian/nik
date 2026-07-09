@@ -4,12 +4,22 @@ import SwiftUI
 /// Tapping a card opens the full-screen pager (TikTok-style preview).
 struct TemplateFeedView: View {
     @Environment(TemplateStore.self) private var store
+    @Environment(PersonalizationStore.self) private var personalization
     @State private var selectedCategory: TemplateCategory = .forYou
     @State private var pagerSelection: Template?
     @State private var path = NavigationPath()
 
+    /// "For You" is personalized (adaptive ranking); every other chip keeps its
+    /// category filter but surfaces the strongest/most-used templates first.
     private var filtered: [Template] {
-        store.templates(in: selectedCategory)
+        if selectedCategory == .forYou {
+            return personalization.ranked(store.templates)
+        }
+        return store.templates(in: selectedCategory).sorted { lhs, rhs in
+            let lt = lhs.trend?.score ?? 0, rt = rhs.trend?.score ?? 0
+            if lt != rt { return lt > rt }
+            return lhs.usageCount > rhs.usageCount
+        }
     }
 
     var body: some View {
@@ -112,6 +122,18 @@ struct TemplateCard: View {
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(Theme.proBadge)
+                        .clipShape(Capsule())
+                        .padding(6)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if (template.trend?.score ?? 0) >= 70 {
+                    Label("Trending", systemImage: "flame.fill")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Theme.accentGradient)
                         .clipShape(Capsule())
                         .padding(6)
                 }

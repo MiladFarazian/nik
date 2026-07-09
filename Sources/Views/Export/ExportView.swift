@@ -8,6 +8,7 @@ struct ExportView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ProjectStore.self) private var projectStore
     @Environment(Entitlements.self) private var entitlements
+    @Environment(PersonalizationStore.self) private var personalization
 
     @State var project: EditProject
     let template: Template
@@ -102,6 +103,7 @@ struct ExportView: View {
             Button {
                 Haptics.medium()
                 projectStore.save(project)
+                personalization.recordExport(template)
                 Task { await exporter.export(project: project, template: template) }
             } label: {
                 Text("Export video")

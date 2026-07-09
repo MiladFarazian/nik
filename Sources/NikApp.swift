@@ -5,6 +5,7 @@ struct NikApp: App {
     @State private var templateStore = TemplateStore()
     @State private var projectStore = ProjectStore()
     @State private var photoLibrary = PhotoLibrary()
+    @State private var personalization = PersonalizationStore()
     @State private var storeService: StoreService
     @State private var entitlements: Entitlements
 
@@ -21,6 +22,7 @@ struct NikApp: App {
                 .environment(templateStore)
                 .environment(projectStore)
                 .environment(photoLibrary)
+                .environment(personalization)
                 .environment(storeService)
                 .environment(entitlements)
                 .preferredColorScheme(.dark)

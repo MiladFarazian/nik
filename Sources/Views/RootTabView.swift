@@ -15,6 +15,7 @@ struct EditorRoute: Hashable {
 }
 
 struct RootTabView: View {
+    @Environment(PersonalizationStore.self) private var personalization
     @State private var selectedTab: AppTab = .templates
 
     var body: some View {
@@ -32,5 +33,8 @@ struct RootTabView: View {
                 .tag(AppTab.profile)
         }
         .background(Theme.background)
+        .fullScreenCover(isPresented: .constant(!personalization.hasOnboarded)) {
+            InterestOnboardingView()
+        }
     }
 }

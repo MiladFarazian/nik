@@ -6,6 +6,7 @@ import Photos
 struct ClipFillView: View {
     @Environment(PhotoLibrary.self) private var library
     @Environment(ProjectStore.self) private var projectStore
+    @Environment(PersonalizationStore.self) private var personalization
 
     let template: Template
     @Binding var path: NavigationPath
@@ -154,6 +155,7 @@ struct ClipFillView: View {
         let ordered = template.slots.compactMap { fills[$0.id] }
         let project = EditProject(template: template, fills: ordered)
         projectStore.save(project)
+        personalization.recordUse(template)
         path.append(EditorRoute(projectID: project.id))
     }
 }
