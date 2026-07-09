@@ -14,8 +14,25 @@ struct EditorRoute: Hashable {
     let projectID: UUID
 }
 
+/// Routes nik://template/<id> deep links: RootTabView catches the URL and
+/// switches tabs; TemplateFeedView watches pendingTemplateID and opens the pager.
+@MainActor
+@Observable
+final class DeepLinkRouter {
+    var pendingTemplateID: String?
+
+    /// Parses nik://template/<id>.
+    func handle(_ url: URL) {
+        guard url.scheme == "nik", url.host == "template" else { return }
+        let id = url.lastPathComponent
+        guard !id.isEmpty, id != "/" else { return }
+        pendingTemplateID = id
+    }
+}
+
 struct RootTabView: View {
     @Environment(PersonalizationStore.self) private var personalization
+    @Environment(DeepLinkRouter.self) private var deepLinks
     @State private var selectedTab: AppTab = .templates
 
     var body: some View {
@@ -33,6 +50,12 @@ struct RootTabView: View {
                 .tag(AppTab.profile)
         }
         .background(Theme.background)
+        .onOpenURL { url in
+            deepLinks.handle(url)
+            if deepLinks.pendingTemplateID != nil {
+                selectedTab = .templates
+            }
+        }
         .fullScreenCover(isPresented: .constant(!personalization.hasOnboarded)) {
             InterestOnboardingView()
         }

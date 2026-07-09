@@ -19,6 +19,14 @@ struct TemplatePreviewVideo: View {
     static func previewURL(for template: Template) -> URL? {
         Bundle.main.url(forResource: template.id, withExtension: "mp4")
     }
+
+    /// Bundled poster frame (extracted where the hook text is visible) for feed cards.
+    static func poster(for template: Template) -> UIImage? {
+        guard let path = Bundle.main.path(forResource: "\(template.id)-poster", ofType: "jpg") else {
+            return nil
+        }
+        return UIImage(contentsOfFile: path)
+    }
 }
 
 private struct LoopingVideoView: View {

@@ -6,6 +6,7 @@ struct NikApp: App {
     @State private var projectStore = ProjectStore()
     @State private var photoLibrary = PhotoLibrary()
     @State private var personalization = PersonalizationStore()
+    @State private var deepLinks = DeepLinkRouter()
     @State private var storeService: StoreService
     @State private var entitlements: Entitlements
 
@@ -23,6 +24,7 @@ struct NikApp: App {
                 .environment(projectStore)
                 .environment(photoLibrary)
                 .environment(personalization)
+                .environment(deepLinks)
                 .environment(storeService)
                 .environment(entitlements)
                 .preferredColorScheme(.dark)

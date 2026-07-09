@@ -5,6 +5,7 @@ import SwiftUI
 struct TemplateFeedView: View {
     @Environment(TemplateStore.self) private var store
     @Environment(PersonalizationStore.self) private var personalization
+    @Environment(DeepLinkRouter.self) private var deepLinks
     @State private var selectedCategory: TemplateCategory = .forYou
     @State private var pagerSelection: Template?
     @State private var path = NavigationPath()
@@ -63,7 +64,21 @@ struct TemplateFeedView: View {
             .navigationDestination(for: EditorRoute.self) { route in
                 EditorView(projectID: route.projectID, path: $path)
             }
+            .onChange(of: deepLinks.pendingTemplateID) { _, id in
+                openDeepLink(id)
+            }
+            .onAppear { openDeepLink(deepLinks.pendingTemplateID) }
         }
+    }
+
+    /// nik://template/<id> → open that template's pager page. Switch to
+    /// "For You" first: the pager pages over `filtered`, and only For You is
+    /// guaranteed to contain every template.
+    private func openDeepLink(_ id: String?) {
+        guard let id, let template = store.template(id: id) else { return }
+        deepLinks.pendingTemplateID = nil
+        selectedCategory = .forYou
+        pagerSelection = template
     }
 
     private var categoryChips: some View {
@@ -96,9 +111,17 @@ struct TemplateCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .bottom) {
-                AnimatedTemplatePreview(template: template)
-                    .aspectRatio(9 / 16, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                Group {
+                    if let poster = TemplatePreviewVideo.poster(for: template) {
+                        Image(uiImage: poster)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        AnimatedTemplatePreview(template: template)
+                    }
+                }
+                .aspectRatio(9 / 16, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
 
                 HStack {
                     Label(template.usageLabel, systemImage: "play.fill")

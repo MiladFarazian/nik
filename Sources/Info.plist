@@ -36,6 +36,17 @@
 	<string>Nik uses the microphone to record voiceovers for your videos.</string>
 	<key>FacebookAppID</key>
 	<string>REPLACE_WITH_FB_APP_ID</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.miladfarazian.nik</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>nik</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>instagram</string>
