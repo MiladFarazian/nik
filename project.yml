@@ -27,6 +27,8 @@ targets:
       - path: Sources
       - path: catalog
         buildPhase: resources
+      - path: previews
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.miladfarazian.nik

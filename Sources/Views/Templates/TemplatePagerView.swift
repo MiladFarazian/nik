@@ -58,7 +58,7 @@ struct TemplatePagerView: View {
 
     private func page(for template: Template) -> some View {
         ZStack(alignment: .bottom) {
-            AnimatedTemplatePreview(template: template)
+            TemplatePreviewVideo(template: template)
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 14) {

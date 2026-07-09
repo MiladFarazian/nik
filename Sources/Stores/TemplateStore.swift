@@ -6,8 +6,10 @@ import Foundation
 @MainActor
 @Observable
 final class TemplateStore {
-    /// Remote catalog location. nil (default) = offline: built-ins + last cached catalog only.
-    nonisolated(unsafe) static var catalogURL: URL?
+    /// Remote catalog location. Points at the repo's main-branch catalog so new
+    /// trends ship by pushing to GitHub — no app update. Set to nil for offline-only.
+    nonisolated(unsafe) static var catalogURL: URL? =
+        URL(string: "https://raw.githubusercontent.com/MiladFarazian/nik/main/catalog/catalog.json")
 
     private(set) var templates: [Template] = TemplateStore.builtIns
 
